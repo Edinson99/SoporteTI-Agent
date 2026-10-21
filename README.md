@@ -1,171 +1,122 @@
-# SoporteTI-Agent
+# 🛠️ SoporteTI-Agent
 
-Base tecnica v0.1 de un agente de soporte TI. Recibe una incidencia, analiza el contexto, consulta una base de conocimiento local, devuelve pasos seguros y escala los casos sin guia para aprobacion humana.
+**Un asistente de soporte TI que convierte incidencias comunes en pasos claros y seguros.**
 
-## Estructura
+Describe el problema; SoporteTI-Agent busca una guía local, devuelve recomendaciones con su fuente y, cuando no encuentra una respuesta, solicita revisión humana en lugar de inventar una solución.
 
-```
-app/                 API, orquestador y herramientas
-data/                conocimiento y contratos JSON
-tests/               pruebas automatizadas
-docs/                contrato, arquitectura, mapa y evidencia
-.env.example         configuracion segura de ejemplo
-.gitignore           archivos que no se versionan
-```
+> **Estado actual:** el diagnóstico del backend es determinista y se basa en palabras clave y una base de conocimiento versionada. Hermes y Kimi son una integración conversacional opcional; Kimi no forma parte del backend ni es necesario para usar la API.
 
-## Arquitectura
+## ✨ ¿Qué puede hacer?
 
-El agente sigue el ciclo: **objetivo -> contexto -> decision -> herramientas -> observacion -> limites**. Consulta el [mapa de arquitectura](docs/arquitectura.md) y el [contrato HTTP](docs/api-contract.md).
+- 🔎 Buscar la guía coincidente más específica en la base de conocimiento local.
+- 🧭 Entregar pasos seguros, el identificador de la guía y la siguiente acción recomendada.
+- 🧑‍💻 Aceptar contexto opcional del equipo, como dispositivo y sistema operativo.
+- 🙋 Solicitar revisión humana si no encuentra una guía; prepara un borrador temporal, no un ticket real.
+- 🔌 Ofrecer la misma lógica mediante API HTTP, AWS Lambda o una herramienta MCP local para Hermes.
+- ✅ Validar las solicitudes y responder con un contrato JSON consistente.
 
-## Integracion con Hermes y Kimi
+### Temas cubiertos
 
-Hermes puede usar Kimi como modelo y consultar el diagnostico de este proyecto
-mediante una herramienta MCP local. La [guia de integracion Hermes + Kimi](docs/hermes-kimi.md)
-describe la configuracion y las pruebas manuales. La clave API de Kimi se
-configura en Hermes; no se guarda en este proyecto.
+🌐 Conectividad e internet · 🐢 Rendimiento · 🖨️ Impresoras · ✉️ Correo · 🔐 Cuentas y MFA · 🛡️ VPN · 📦 Instalación de software · 🎧 Periféricos · 🚨 Correos sospechosos · 🪟 Errores de Windows y actualizaciones · 🔋 Batería y energía · 💾 Formateo y respaldos · 🪪 Licencias · ⌨️ Diagnóstico CMD · ⚙️ Optimización.
 
-Para desplegar y mantener la conexion, consulta la
-[guia tecnica Hermes + Kimi](docs/guia-tecnica-hermes-kimi.md). Para iniciar
-Hermes y pedir ayuda con una incidencia, consulta la
-[guia para usuarios](docs/guia-usuario-hermes-kimi.md).
+La búsqueda actual es por palabras completas coincidentes; no es semántica. Si el agente no reconoce una incidencia, conviene describirla de otra forma o pedir revisión a soporte.
 
-## Entorno aislado y ejecucion
+## 🚀 Inicio rápido en Windows
+
+Requiere **Python 3.11 o superior** y Git.
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python -m pytest tests/ -v
-uvicorn app.main:app --reload
+git clone https://github.com/Edinson99/SoporteTI-Agent.git
+cd SoporteTI-Agent
+.\scripts\setup.ps1
+.\scripts\start.ps1
 ```
 
-La API queda en `http://127.0.0.1:8000` y la documentacion interactiva en `http://127.0.0.1:8000/docs`.
+El script de configuración crea el entorno virtual, instala las dependencias y ejecuta las pruebas. La API queda disponible en:
 
-## Despliegue en AWS Lambda
+- **API:** `http://127.0.0.1:8000`
+- **Documentación interactiva:** `http://127.0.0.1:8000/docs`
+- **Estado del servicio:** `http://127.0.0.1:8000/health`
 
-El proyecto incluye [template.yaml](template.yaml) para AWS SAM. La funcion usa el handler `app.lambda_handler.handler`, incluye la base de conocimiento local y expone una API HTTP con `GET /health` y `POST /agent/ask`.
+Para omitir las pruebas durante la instalación, usa `.\scripts\setup.ps1 -SkipTests`. Para elegir otro puerto, inicia con `.\scripts\start.ps1 -Port 8080`.
 
-Requiere AWS CLI, AWS SAM CLI, credenciales configuradas y Python 3.12 para coincidir con el runtime:
+## 💬 Cómo usarlo
+
+Envía una incidencia a `POST /agent/ask`:
+
+```json
+{
+  "question": "No tengo internet en mi portátil",
+  "user_id": "USR-1042",
+  "context": {
+    "device": "portátil",
+    "operating_system": "Windows 11"
+  }
+}
+```
+
+Una respuesta con guía incluye los pasos, su fuente y si necesita aprobación:
+
+```json
+{
+  "answer": "Para portátil: ...",
+  "sources": ["kb_internet_001"],
+  "needs_approval": false,
+  "next_action": "seguir_pasos_seguros"
+}
+```
+
+La solicitud requiere `question` (5–500 caracteres) y `user_id` (3–50 caracteres); `context` es opcional. El contrato completo está en [docs/api-contract.md](docs/api-contract.md), y hay ejemplos en [data/agent_request.json](data/agent_request.json) y [data/agent_response.json](data/agent_response.json).
+
+## 🔗 Formas de integración y despliegue
+
+| Modalidad | Qué ofrece | Documentación |
+| --- | --- | --- |
+| **API local** | FastAPI con `GET /health` y `POST /agent/ask`. | [Contrato HTTP](docs/api-contract.md) |
+| **Hermes + MCP** | Hermes puede consultar la herramienta local `consultar_soporte_ti`; Kimi puede usarse como modelo conversacional en Hermes. | [Guía técnica](docs/guia-tecnica-hermes-kimi.md) · [Guía para usuarios](docs/guia-usuario-hermes-kimi.md) |
+| **AWS Lambda + API Gateway** | Despliegue con AWS SAM y los mismos endpoints HTTP. | [template.yaml](template.yaml) |
+
+Para desplegar en AWS desde PowerShell, configura AWS CLI y SAM CLI y ejecuta:
 
 ```powershell
 aws configure
 .\scripts\deploy.ps1 -StackName soporte-ti-agent-dev -Region us-east-1
 ```
 
-El script ejecuta `sam build`, despliega el stack y muestra la URL de la API. Para probarla:
+El script construye y despliega el stack, y muestra la URL de la API al finalizar. **La API desplegada por esta plantilla no incluye autenticación**: no la expongas en producción o en redes públicas sin añadir autenticación, autorización y controles de uso.
+
+## 🧠 Qué ocurre con una solicitud
+
+1. Se validan la pregunta, el identificador de usuario y el contexto opcional.
+2. Se buscan coincidencias de palabras clave en [data/conocimiento_soporte.json](data/conocimiento_soporte.json); se prioriza la frase coincidente más específica.
+3. Si hay una guía, se devuelven sus pasos y su identificador en `sources`.
+4. Si no hay coincidencia, se devuelve un borrador de escalación temporal y `needs_approval: true`.
+
+La API, Lambda y MCP comparten el mismo agente y la misma base de conocimiento. Consulta el [mapa de arquitectura](docs/arquitectura.md) y la [matriz de componentes y verificación](docs/reporte-matriz-v0.1.md) para más detalle.
+
+## 🔒 Límites y seguridad
+
+- El agente **recomienda**, pero no ejecuta comandos ni modifica el equipo.
+- No instala software, no cambia contraseñas y no crea ni envía tickets reales.
+- Los borradores de escalación no se guardan: existen solo durante la solicitud.
+- La base de conocimiento está versionada localmente; el backend no consulta Kimi ni servicios externos para diagnosticar.
+- No incluyas contraseñas, códigos de verificación, claves API ni información confidencial en las solicitudes.
+- La API no implementa autenticación. Protege el acceso antes de cualquier despliegue accesible por otras personas.
+
+## 🧪 Pruebas
+
+Con el entorno configurado, ejecuta:
 
 ```powershell
-$apiUrl = "https://<api-id>.execute-api.us-east-1.amazonaws.com"
-Invoke-RestMethod "$apiUrl/health"
-Invoke-RestMethod "$apiUrl/agent/ask" -Method Post -ContentType "application/json" -Body (@{
-  question = "No tengo internet en mi portatil"
-  user_id = "USR-1042"
-  context = @{ device = "portatil" }
-} | ConvertTo-Json)
+.\.venv\Scripts\python.exe -m pytest tests/ -v
 ```
 
-## Despliegue en AWS Lambda (agente soporte IT)
+## 📁 Estructura del proyecto
 
-La funcion `agentesoporit-lambda-v01` (region `us-east-2`) corre el handler `lambda_function.lambda_handler`
-en `python3.13`. El codigo esta versionado en [lambda/agentesoporit-lambda-v01](lambda/agentesoporit-lambda-v01),
-valida `request_id`, `user_id`, `question`, `channel` y responde `status`, `answer`, `source`, `next_action`.
-
-## Despliegue en EC2 (Amazon Linux 2023)
-
-El proyecto tambien corre como servicio persistente (`systemd`) en una instancia EC2, sirviendo el mismo FastAPI
-de `app/main.py` con `uvicorn` en el puerto `8000`.
-
-```bash
-sudo dnf install -y python3.11 python3.11-pip git
-git clone https://github.com/Edinson2499/SoporteTI-Agent.git
-cd SoporteTI-Agent
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt uvicorn
+```text
+app/       API, agente compartido, herramientas y servidor MCP
+data/      Base de conocimiento y ejemplos del contrato JSON
+docs/      Contratos, arquitectura y guías de uso e integración
+scripts/   Configuración, inicio y despliegue con AWS SAM
+tests/     Pruebas automatizadas
 ```
-
-Servicio `systemd` (`/etc/systemd/system/soporteti-agent.service`) para que quede activo tras reinicios o cierre de sesion:
-
-```ini
-[Unit]
-Description=SoporteTI-Agent FastAPI
-After=network.target
-
-[Service]
-User=ec2-user
-WorkingDirectory=/home/ec2-user/SoporteTI-Agent
-ExecStart=/home/ec2-user/SoporteTI-Agent/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now soporteti-agent
-```
-
-Requiere una regla de entrada en el Security Group (Custom TCP, puerto `8000`, origen `0.0.0.0/0`). La IP publica
-de la instancia cambia si se reinicia sin una Elastic IP asociada.
-
-## Guia rapida: clonar y ejecutar en cualquier equipo (PowerShell)
-
-Requiere Python 3.11+ y Git instalados y disponibles en el `PATH`.
-
-```powershell
-# 1. Clonar el repositorio
-git clone https://github.com/<usuario>/SoporteTI-Agent.git
-cd SoporteTI-Agent
-
-# 2. Configurar entorno (venv + dependencias + .env + pruebas)
-.\scripts\setup.ps1
-
-# 3. Iniciar la API
-.\scripts\start.ps1
-```
-
-- `setup.ps1` detecta Python 3.11+ mediante `python` o el lanzador `py`, crea `.venv`, instala `requirements.txt`, genera `.env` desde `.env.example` (si no existe) y corre `pytest`. Usa `-SkipTests` para omitir las pruebas.
-- `start.ps1` activa el entorno virtual y levanta `uvicorn` en `http://127.0.0.1:8000` (usa `-Port` para cambiar el puerto).
-- Si PowerShell bloquea la ejecucion de scripts, corre una vez: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`.
-- Para ejecutar solo las pruebas despues de configurar el entorno: `.\.venv\Scripts\python.exe -m pytest tests/ -v`.
-
-Pasos manuales equivalentes (sin los scripts):
-
-```powershell
-git clone https://github.com/<usuario>/SoporteTI-Agent.git
-cd SoporteTI-Agent
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-Copy-Item .env.example .env
-python -m pytest tests/ -v
-uvicorn app.main:app --reload
-```
-
-## Ejemplo
-
-```http
-POST /agent/ask
-Content-Type: application/json
-
-{
-  "question": "No tengo internet en mi portatil",
-  "user_id": "USR-1042",
-  "context": {
-    "device": "portatil",
-    "operating_system": "Windows 11"
-  }
-}
-```
-
-Los contratos de referencia estan en [data/agent_request.json](data/agent_request.json) y [data/agent_response.json](data/agent_response.json). La base de conocimiento local esta en [data/conocimiento_soporte.json](data/conocimiento_soporte.json).
-
-## Limites
-
-El agente no ejecuta comandos administrativos, no instala software, no cambia contrasenas, no modifica configuraciones criticas, no elimina archivos y no envia tickets. Cuando no encuentra una guia, prepara un borrador y devuelve `needs_approval: true`.
-
-## Evidencia
-
-La [matriz de la base tecnica](docs/reporte-matriz-v0.1.md) resume componentes, responsabilidades y pruebas. Usa `git status`, `git log --oneline` y `git push` para registrar decisiones pequenas y verificables.
