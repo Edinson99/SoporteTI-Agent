@@ -8,6 +8,8 @@
 | Validacion | Modelos de solicitud/respuesta | Rechaza contratos invalidos sin procesarlos. | Pydantic |
 | Orquestacion | `AgenteSoporteTI` | Analiza el objetivo, decide entre guia o escalacion y aplica limites. | Python |
 | Herramientas | Busqueda y borrador de ticket | Consulta conocimiento y prepara, sin enviar, una escalacion. | Python |
+| Integracion de agente | Servidor MCP stdio | Expone el diagnostico existente como herramienta para Hermes. | MCP Python SDK |
+| Modelo | Proveedor configurado en Hermes | Genera la conversacion; Kimi se configura fuera de la aplicacion. | Kimi API |
 | Datos | Base de conocimiento | Contiene diagnosticos y pasos seguros versionados. | JSON local |
 | Configuracion | `.env.example` y `.gitignore` | Documenta variables y evita publicar secretos. | Variables de entorno |
 | Calidad | Pruebas | Verifican JSON, diagnostico, escalacion y HTTP. | Pytest |
@@ -26,9 +28,15 @@ flowchart LR
     KB --> R[Respuesta 200: pasos seguros + fuente]
     D -->|Sin guia| T[crear_borrador_ticket]
     T --> H[Respuesta 200: requiere aprobacion]
+    Hermes[Hermes Agent] -->|MCP stdio| MCP[consultar_soporte_ti]
+    Kimi[Kimi API] --> Hermes
+    MCP --> A
     R --> U
     H --> U
 ```
+
+Para la configuracion detallada de Hermes y Kimi, consulta
+[la guia de integracion](hermes-kimi.md).
 
 ## Ciclo cloud-native del agente
 

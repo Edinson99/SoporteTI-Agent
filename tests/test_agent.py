@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.agent import AgenteSoporteTI
 from app.main import app
+from app.mcp_server import consultar_soporte_ti
 from app.tools import buscar_conocimiento
 
 client = TestClient(app)
@@ -67,3 +68,23 @@ def test_agent_ask_rechaza_question_faltante():
     respuesta = client.post("/agent/ask", json={"user_id": "USR-1042"})
     assert respuesta.status_code == 400
     assert respuesta.json()["detail"] == "Solicitud invalida."
+
+
+def test_herramienta_mcp_consulta_el_diagnostico_compartido():
+    resultado = consultar_soporte_ti(
+        "No tengo internet en mi portatil",
+        "USR-1042",
+        {"device": "portatil"},
+    )
+
+    assert resultado["sources"] == ["kb_internet_001"]
+    assert resultado["needs_approval"] is False
+    assert resultado["next_action"] == "seguir_pasos_seguros"
+
+
+def test_herramienta_mcp_escala_casos_sin_guia():
+    resultado = consultar_soporte_ti("La cafetera no funciona", "USR-1042")
+
+    assert resultado["sources"] == ["protocolo_escalamiento"]
+    assert resultado["needs_approval"] is True
+    assert resultado["next_action"] == "borrador_pendiente_aprobacion"

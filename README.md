@@ -17,6 +17,18 @@ docs/                contrato, arquitectura, mapa y evidencia
 
 El agente sigue el ciclo: **objetivo -> contexto -> decision -> herramientas -> observacion -> limites**. Consulta el [mapa de arquitectura](docs/arquitectura.md) y el [contrato HTTP](docs/api-contract.md).
 
+## Integracion con Hermes y Kimi
+
+Hermes puede usar Kimi como modelo y consultar el diagnostico de este proyecto
+mediante una herramienta MCP local. La [guia de integracion Hermes + Kimi](docs/hermes-kimi.md)
+describe la configuracion y las pruebas manuales. La clave API de Kimi se
+configura en Hermes; no se guarda en este proyecto.
+
+Para desplegar y mantener la conexion, consulta la
+[guia tecnica Hermes + Kimi](docs/guia-tecnica-hermes-kimi.md). Para iniciar
+Hermes y pedir ayuda con una incidencia, consulta la
+[guia para usuarios](docs/guia-usuario-hermes-kimi.md).
+
 ## Entorno aislado y ejecucion
 
 ```powershell
@@ -114,9 +126,10 @@ cd SoporteTI-Agent
 .\scripts\start.ps1
 ```
 
-- `setup.ps1` crea `.venv`, instala `requirements.txt`, genera `.env` desde `.env.example` (si no existe) y corre `pytest`. Usa `-SkipTests` para omitir las pruebas.
+- `setup.ps1` detecta Python 3.11+ mediante `python` o el lanzador `py`, crea `.venv`, instala `requirements.txt`, genera `.env` desde `.env.example` (si no existe) y corre `pytest`. Usa `-SkipTests` para omitir las pruebas.
 - `start.ps1` activa el entorno virtual y levanta `uvicorn` en `http://127.0.0.1:8000` (usa `-Port` para cambiar el puerto).
 - Si PowerShell bloquea la ejecucion de scripts, corre una vez: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`.
+- Para ejecutar solo las pruebas despues de configurar el entorno: `.\.venv\Scripts\python.exe -m pytest tests/ -v`.
 
 Pasos manuales equivalentes (sin los scripts):
 
