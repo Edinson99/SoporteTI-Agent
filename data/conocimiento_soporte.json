@@ -29,6 +29,147 @@
         "Cancela solo los trabajos propios que permanezcan en cola.",
         "Si el error continua, informa el nombre de la impresora al soporte."
       ]
+    },
+    {
+      "id": "kb_correo_001",
+      "palabras_clave": ["correo", "email", "outlook", "bandeja de entrada"],
+      "pasos": [
+        "Confirma que tienes conexion a internet y vuelve a abrir la aplicacion de correo.",
+        "Revisa la carpeta de correo no deseado y busca si el buzon indica que esta lleno.",
+        "Si usas correo web, prueba el acceso desde el portal institucional oficial.",
+        "Si el problema continua, informa al soporte el mensaje de error y la hora aproximada; no compartas tu contrasena."
+      ]
+    },
+    {
+      "id": "kb_acceso_cuenta_001",
+      "palabras_clave": ["no puedo iniciar sesion", "cuenta bloqueada", "cuenta esta bloqueada", "bloqueo de cuenta", "restablecer contraseña", "restablecer contrasena"],
+      "pasos": [
+        "Comprueba que el usuario este escrito correctamente y que el teclado no tenga activadas teclas inesperadas.",
+        "Si olvidaste la contraseña, utiliza el portal institucional oficial de recuperacion.",
+        "No compartas contraseñas ni codigos de verificacion con otras personas o por chat.",
+        "Si la cuenta aparece bloqueada o la recuperacion falla, solicita ayuda al soporte indicando el mensaje mostrado."
+      ]
+    },
+    {
+      "id": "kb_mfa_001",
+      "palabras_clave": ["mfa", "autenticacion multifactor", "verificacion en dos pasos", "codigo de verificacion"],
+      "pasos": [
+        "Confirma que la fecha y hora del dispositivo esten configuradas automaticamente.",
+        "Solicita un codigo nuevo desde la aplicacion o portal institucional y utiliza solo el codigo mas reciente.",
+        "Nunca compartas el codigo de verificacion ni apruebes solicitudes de inicio de sesion que no hayas iniciado.",
+        "Si perdiste el dispositivo de autenticacion o no recibes codigos, contacta al soporte por el canal oficial."
+      ]
+    },
+    {
+      "id": "kb_vpn_001",
+      "palabras_clave": ["vpn", "acceso remoto", "conexion remota"],
+      "pasos": [
+        "Confirma que tienes una conexion a internet estable antes de iniciar la VPN.",
+        "Abre el cliente VPN institucional y registra el mensaje de error exacto si aparece.",
+        "Comprueba que la fecha y hora del equipo sean correctas y que no haya otra sesion activa.",
+        "No compartas tu contraseña ni instales clientes VPN de fuentes no oficiales; solicita apoyo si el problema continua."
+      ]
+    },
+    {
+      "id": "kb_software_001",
+      "palabras_clave": ["instalar programa", "instalacion de software", "instalar aplicacion", "solicitar software"],
+      "pasos": [
+        "Confirma el nombre del programa, la version y el uso laboral requerido.",
+        "Solicita la instalacion o licencia por el canal institucional de soporte.",
+        "No descargues instaladores de sitios no oficiales ni intentes omitir controles de seguridad.",
+        "Si ya tienes una licencia institucional, informa al soporte el mensaje que aparece al activarla."
+      ]
+    },
+    {
+      "id": "kb_perifericos_001",
+      "palabras_clave": ["teclado", "mouse", "raton", "microfono", "auriculares", "audifonos", "webcam", "camara web"],
+      "pasos": [
+        "Comprueba que el dispositivo este conectado y que el cable o puerto no tenga daños visibles.",
+        "Si es USB, prueba otro puerto disponible; si es inalambrico, confirma que tenga bateria y este encendido.",
+        "En una videollamada, revisa que la aplicacion tenga seleccionado el microfono o dispositivo correcto.",
+        "Si persiste, informa al soporte el modelo del periferico y en que aplicaciones ocurre."
+      ]
+    },
+    {
+      "id": "kb_seguridad_correo_001",
+      "palabras_clave": ["phishing", "correo sospechoso", "mensaje sospechoso", "enlace sospechoso", "archivo adjunto sospechoso"],
+      "pasos": [
+        "No abras enlaces ni archivos adjuntos y no respondas al mensaje.",
+        "No ingreses credenciales en paginas abiertas desde ese mensaje.",
+        "Reporta el correo o mensaje al equipo de seguridad mediante el canal institucional.",
+        "Si ya ingresaste tu contraseña o abriste un archivo, avisa al soporte de inmediato y sigue sus instrucciones."
+      ]
+    },
+    {
+      "id": "kb_pantalla_actualizacion_001",
+      "palabras_clave": ["pantalla azul", "pantallazo azul", "bsod", "error de actualizacion", "actualizacion fallida", "no inicia despues de actualizar"],
+      "pasos": [
+        "Anota el codigo o mensaje de error y, si es posible, toma una foto sin incluir datos confidenciales.",
+        "Si el equipo sigue respondiendo, guarda tu trabajo y conectalo a la corriente.",
+        "No apagues el equipo mientras indique que esta instalando o revirtiendo una actualizacion.",
+        "Si el equipo no inicia o el error se repite, contacta al soporte antes de instalar controladores o cambiar configuraciones."
+      ]
+    },
+    {
+      "id": "kb_bateria_energia_001",
+      "palabras_clave": ["bateria no carga", "portatil no carga", "equipo no enciende", "cargador no funciona", "se apaga al desconectar"],
+      "pasos": [
+        "Comprueba que el cargador este conectado firmemente a una toma de corriente funcional.",
+        "Revisa visualmente el cable y el adaptador; no uses un cargador con daños, olor a quemado o calentamiento anormal.",
+        "Si el equipo esta muy caliente, desconectalo y deja de usarlo; no intentes abrirlo ni retirar la bateria.",
+        "Informa al soporte el modelo del equipo y si aparecen luces o mensajes al conectarlo."
+      ]
+    },
+    {
+      "id": "kb_formateo_reinstalacion_001",
+      "palabras_clave": ["formatear", "formateo", "restablecer el pc", "restablecer windows", "reinstalar windows", "reinstalar sistema operativo"],
+      "pasos": [
+        "Formatear o reinstalar puede borrar archivos, aplicaciones y configuraciones; no inicies el proceso por tu cuenta en un equipo institucional.",
+        "Contacta primero al soporte para confirmar que el procedimiento esta autorizado y quien lo realizara.",
+        "Antes de cualquier borrado, solicita verificar que los archivos importantes tengan una copia de seguridad accesible y comprobada.",
+        "Confirma con TI el metodo de reinstalacion, la activacion de licencias y la restauracion de los datos; no compartas claves de producto ni codigos de recuperacion."
+      ]
+    },
+    {
+      "id": "kb_respaldo_datos_001",
+      "palabras_clave": ["copia de seguridad", "copias de seguridad", "respaldo", "respaldar archivos", "backup", "restaurar archivos", "recuperar archivos"],
+      "pasos": [
+        "Identifica que archivos necesitas conservar y en que ubicaciones estan guardados, incluyendo carpetas locales y sincronizadas.",
+        "Utiliza solo el almacenamiento institucional aprobado; no copies informacion laboral a cuentas personales, USB desconocidos o servicios no autorizados.",
+        "Confirma que la sincronizacion o copia haya terminado y que puedas abrir algunos archivos desde el destino.",
+        "Si vas a cambiar, reparar o formatear el equipo, pide al soporte que confirme el respaldo y el procedimiento de restauracion antes de continuar."
+      ]
+    },
+    {
+      "id": "kb_licencias_activacion_001",
+      "palabras_clave": ["licencia expirada", "licencia de software", "activar windows", "activacion de windows", "office sin licencia", "producto sin licencia", "error de activacion"],
+      "pasos": [
+        "Comprueba que estas usando la cuenta institucional asignada para ese producto y que tienes conexion a internet.",
+        "Anota el nombre del producto y el codigo o mensaje de activacion, sin enviar claves de producto ni capturas con datos confidenciales.",
+        "Solicita validacion de la asignacion o renovacion de licencia al equipo de soporte o al administrador de licencias.",
+        "No uses activadores, claves encontradas en internet ni cuentas personales para evitar los controles institucionales."
+      ]
+    },
+    {
+      "id": "kb_cmd_diagnostico_001",
+      "palabras_clave": ["comandos cmd", "comando cmd", "simbolo del sistema", "ipconfig", "ping", "hostname", "whoami", "systeminfo"],
+      "pasos": [
+        "Abre el Simbolo del sistema desde el menu Inicio como usuario normal; no lo ejecutes como administrador para estas consultas.",
+        "ipconfig muestra la configuracion de red local; hostname muestra el nombre del equipo y whoami el usuario de la sesion.",
+        "ping <puerta_de_enlace> puede comprobar si hay respuesta de la puerta de enlace cuando el soporte te indique cual usar.",
+        "Estos comandos solo consultan informacion. No ejecutes comandos que borren datos, cambien la red o modifiquen el sistema; comparte resultados solo por el canal institucional aprobado y oculta datos sensibles."
+      ]
+    },
+    {
+      "id": "kb_optimizacion_equipo_001",
+      "palabras_clave": ["optimizar equipo", "optimizar rendimiento", "inicio lento", "programas al inicio", "uso alto de memoria", "uso alto de cpu", "equipo tarda en iniciar", "liberar espacio"],
+      "pasos": [
+        "Reinicia el equipo si es posible y cierra aplicaciones que no estes utilizando; guarda antes cualquier trabajo abierto.",
+        "En el Administrador de tareas, observa que aplicaciones consumen recursos y cierra solo las que reconoces y abriste.",
+        "Revisa el espacio disponible desde Configuracion de almacenamiento; no borres carpetas de trabajo ni archivos cuyo uso desconozcas.",
+        "Desactiva del inicio automatico solo aplicaciones personales conocidas que no sean necesarias; no cambies herramientas de seguridad o administracion.",
+        "Evita limpiadores, optimizadores, cambios en el registro y desactivar antivirus; si la lentitud persiste, informa al soporte el modelo, sistema operativo y cuando empezo."
+      ]
     }
   ]
 }

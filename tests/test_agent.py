@@ -29,6 +29,43 @@ def test_busca_conocimiento_de_internet():
     assert articulo["id"] == "kb_internet_001"
 
 
+def test_busqueda_no_coincide_con_palabras_parciales():
+    assert buscar_conocimiento("La pared necesita pintura") is None
+
+
+def test_base_conocimiento_incluye_guias_ti_frecuentes():
+    casos = {
+        "No puedo abrir Outlook": "kb_correo_001",
+        "Mi cuenta esta bloqueada": "kb_acceso_cuenta_001",
+        "No puedo conectarme a la VPN": "kb_vpn_001",
+        "Necesito instalar programa": "kb_software_001",
+        "El microfono no funciona": "kb_perifericos_001",
+        "Recibi un correo sospechoso con un enlace sospechoso": "kb_seguridad_correo_001",
+        "Tengo una pantalla azul": "kb_pantalla_actualizacion_001",
+        "La bateria no carga": "kb_bateria_energia_001",
+        "Quiero formatear Windows": "kb_formateo_reinstalacion_001",
+        "Como hago una copia de seguridad": "kb_respaldo_datos_001",
+        "Mi licencia de software expirada": "kb_licencias_activacion_001",
+        "Que hace ipconfig en CMD": "kb_cmd_diagnostico_001",
+        "Quiero optimizar rendimiento": "kb_optimizacion_equipo_001",
+    }
+
+    for pregunta, articulo_esperado in casos.items():
+        articulo = buscar_conocimiento(pregunta)
+        assert articulo is not None, pregunta
+        assert articulo["id"] == articulo_esperado
+
+
+def test_guias_de_formateo_y_cmd_indican_limites_seguros():
+    formateo = buscar_conocimiento("Quiero formatear Windows")
+    comandos = buscar_conocimiento("Que hace ipconfig en CMD")
+
+    assert formateo is not None
+    assert any("no inicies el proceso por tu cuenta" in paso for paso in formateo["pasos"])
+    assert comandos is not None
+    assert any("No ejecutes comandos que borren datos" in paso for paso in comandos["pasos"])
+
+
 def test_agente_recomienda_pasos_seguros_para_caso_conocido():
     resultado = AgenteSoporteTI().responder("La impresora no imprime", "USR-1042")
     assert resultado["sources"] == ["kb_impresora_001"]

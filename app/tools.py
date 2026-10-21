@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -16,12 +17,19 @@ def cargar_base_conocimiento() -> list[dict[str, Any]]:
 
 
 def buscar_conocimiento(problema: str) -> dict[str, Any] | None:
-    """Encuentra el primer articulo cuyo conjunto de palabras clave coincida."""
+    """Encuentra el articulo con la palabra clave coincidente mas especifica."""
     texto = problema.lower()
+    mejor_articulo: dict[str, Any] | None = None
+    mayor_coincidencia = 0
+
     for articulo in cargar_base_conocimiento():
-        if any(palabra in texto for palabra in articulo["palabras_clave"]):
-            return articulo
-    return None
+        for palabra in articulo["palabras_clave"]:
+            patron = rf"(?<!\w){re.escape(palabra.lower())}(?!\w)"
+            if len(palabra) > mayor_coincidencia and re.search(patron, texto):
+                mejor_articulo = articulo
+                mayor_coincidencia = len(palabra)
+
+    return mejor_articulo
 
 
 def crear_borrador_ticket(problema: str, usuario: str) -> dict[str, str]:
