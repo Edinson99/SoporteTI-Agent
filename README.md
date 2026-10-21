@@ -34,7 +34,8 @@ cd SoporteTI-Agent
 
 El script de configuración crea el entorno virtual, instala las dependencias y ejecuta las pruebas. La API queda disponible en:
 
-- **API:** `http://127.0.0.1:8000`
+- **Interfaz gráfica del agente:** `http://127.0.0.1:8000`
+- **API:** `http://127.0.0.1:8000/agent/ask`
 - **Documentación interactiva:** `http://127.0.0.1:8000/docs`
 - **Estado del servicio:** `http://127.0.0.1:8000/health`
 

@@ -86,6 +86,13 @@ def test_health():
     assert respuesta.json() == {"status": "ok"}
 
 
+def test_inicio_sirve_interfaz_grafica():
+    respuesta = client.get("/")
+    assert respuesta.status_code == 200
+    assert "text/html" in respuesta.headers["content-type"]
+    assert "¿En qué podemos ayudarte?" in respuesta.text
+
+
 def test_agent_ask_retorna_diagnostico_ti():
     respuesta = client.post(
         "/agent/ask",

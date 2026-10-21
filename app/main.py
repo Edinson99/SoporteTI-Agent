@@ -2,24 +2,32 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from app.agent import AgenteSoporteTI
 
 
 agent = AgenteSoporteTI()
+UI_FILE = Path(__file__).parent / "static" / "index.html"
 
 app = FastAPI(
     title="SoporteTI-Agent API",
     description="Agente de soporte TI con conocimiento local y limites seguros.",
     version="0.1.0",
 )
+
+
+@app.get("/", include_in_schema=False)
+def web_interface() -> FileResponse:
+    """Sirve la interfaz gráfica del agente."""
+    return FileResponse(UI_FILE)
 
 
 class AgentAskRequest(BaseModel):

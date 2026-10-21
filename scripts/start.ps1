@@ -19,5 +19,5 @@ if (-not (Test-Path ".venv\Scripts\Activate.ps1")) {
 }
 
 . .\.venv\Scripts\Activate.ps1
-Write-Host "Iniciando API en http://127.0.0.1:$Port (docs en /docs)..." -ForegroundColor Cyan
+Write-Host "Iniciando Soporte TI: interfaz en http://127.0.0.1:$Port (API docs en /docs)..." -ForegroundColor Cyan
 uvicorn app.main:app --reload --port $Port
