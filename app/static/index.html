@@ -29,7 +29,7 @@
       color: var(--ink);
       font-family: Inter, "Segoe UI", Arial, sans-serif;
     }
-    button, input, textarea { font: inherit; }
+    button, input, textarea, select { font: inherit; }
     button { cursor: pointer; }
     .app { max-width: 1440px; min-height: 100vh; margin: auto; padding: 28px 5.2%; }
     .topbar { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
@@ -101,6 +101,16 @@
       background: white; color: #42536b; font-size: 12px; transition: .15s ease;
     }
     .suggestion:hover { border-color: #a9c4fa; background: #f4f8ff; color: var(--blue-dark); }
+    .context-panel { margin: 0 6% 18px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfe; }
+    .context-panel summary { padding: 13px 15px; color: #42536b; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .context-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 0 15px 15px; }
+    .context-field { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+    .context-field input, .context-field select {
+      width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line);
+      border-radius: 8px; outline: none; color: var(--ink); background: white; font-size: 12px;
+    }
+    .context-field input:focus, .context-field select:focus { border-color: #8bb1ff; box-shadow: 0 0 0 3px rgba(40, 104, 232, .1); }
+    .context-help { grid-column: 1 / -1; margin: 0; color: #8996a8; font-size: 11px; line-height: 1.5; }
     .composer { padding: 17px 24px 20px; border-top: 1px solid var(--line); background: #fcfdff; }
     .composer form { display: flex; align-items: flex-end; gap: 12px; }
     textarea {
@@ -133,6 +143,9 @@
       .user-field input { width: 115px; }
       .chat { min-height: 240px; padding: 20px 15px; }
       .quick-start { padding: 0 15px 17px; }
+      .context-panel { margin: 0 15px 16px; }
+      .context-fields { grid-template-columns: 1fr; }
+      .context-help { grid-column: auto; }
       .composer { padding: 14px 13px 16px; }
       .composer form { align-items: stretch; flex-direction: column; gap: 9px; }
       .send { align-self: flex-end; min-height: 43px; }
@@ -182,7 +195,7 @@
                 <path d="M16 27c1.1 1 2.4 1.5 4 1.5s2.9-.5 4-1.5" stroke="white" stroke-width="1.7" stroke-linecap="round"/>
               </svg>
             </div>
-            <div><div class="agent-name">Agente de Soporte TI</div><div class="agent-subtitle">Respuestas basadas en guías seguras</div></div>
+            <div><div class="agent-name">Agente de Soporte TI</div><div class="agent-subtitle">Hermes + Kimi · diagnóstico local con guías seguras</div></div>
           </div>
           <label class="user-field" for="user-id">Usuario <input id="user-id" name="user_id" value="usuario-web" maxlength="50" autocomplete="username"></label>
         </div>
@@ -206,6 +219,49 @@
           </div>
         </div>
 
+        <details class="context-panel">
+          <summary>Datos para afinar el diagnóstico (opcional)</summary>
+          <div class="context-fields">
+            <label class="context-field" for="device">Equipo o dispositivo
+              <input id="device" name="device" maxlength="80" placeholder="Ej.: portátil">
+            </label>
+            <label class="context-field" for="operating-system">Sistema operativo
+              <input id="operating-system" name="operating_system" maxlength="80" placeholder="Ej.: Windows 11">
+            </label>
+            <label class="context-field" for="affected-scope">Alcance del problema
+              <input id="affected-scope" name="affected_scope" maxlength="160" placeholder="Ej.: solo mi equipo">
+            </label>
+            <label class="context-field" for="error-message-input">Mensaje de error
+              <input id="error-message-input" name="error_message" maxlength="300" placeholder="No incluyas códigos ni datos privados">
+            </label>
+            <label class="context-field" for="recent-changes">Cambios recientes
+              <input id="recent-changes" name="recent_changes" maxlength="200" placeholder="Ej.: actualización ayer">
+            </label>
+            <label class="context-field" for="gateway-check">¿Responde la puerta de enlace?
+              <select id="gateway-check" name="gateway_reachable">
+                <option value="">No lo he comprobado</option>
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <label class="context-field" for="dns-check">¿Funciona la resolución DNS?
+              <select id="dns-check" name="dns_resolution">
+                <option value="">No lo he comprobado</option>
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <label class="context-field" for="internet-check">¿Hay acceso a Internet?
+              <select id="internet-check" name="internet_reachable">
+                <option value="">No lo he comprobado</option>
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <p class="context-help">Las pruebas de red son datos que tú reportas; el agente no ejecuta comprobaciones en este equipo. Nunca introduzcas contraseñas ni códigos MFA.</p>
+          </div>
+        </details>
+
         <div class="composer">
           <form id="ask-form">
             <textarea id="question" name="question" rows="1" minlength="5" maxlength="500" required placeholder="Escribe aquí tu problema..." aria-label="Describe tu problema"></textarea>
@@ -215,7 +271,7 @@
           <div class="error" id="error-message" role="alert"></div>
         </div>
       </section>
-      <footer>El agente recomienda pasos, pero no realiza cambios en tu equipo.</footer>
+      <footer>Hermes + Kimi redactan la respuesta; el diagnóstico usa guías locales. No se ejecutan cambios en tu equipo.</footer>
     </main>
   </div>
 
@@ -227,9 +283,36 @@
     const sendButton = document.getElementById("send-button");
     const errorMessage = document.getElementById("error-message");
     const robotIcon = document.querySelector(".workspace-head .mini-mark").innerHTML;
+    const contextInputs = {
+      device: document.getElementById("device"),
+      operating_system: document.getElementById("operating-system"),
+      affected_scope: document.getElementById("affected-scope"),
+      error_message: document.getElementById("error-message-input"),
+      recent_changes: document.getElementById("recent-changes")
+    };
+    const networkInputs = {
+      gateway_reachable: document.getElementById("gateway-check"),
+      dns_resolution: document.getElementById("dns-check"),
+      internet_reachable: document.getElementById("internet-check")
+    };
+    const conversationHistory = [];
 
     userInput.value = localStorage.getItem("soporte-ti-user") || userInput.value;
     userInput.addEventListener("change", () => localStorage.setItem("soporte-ti-user", userInput.value.trim()));
+
+    function collectContext() {
+      const context = {};
+      Object.entries(contextInputs).forEach(([key, input]) => {
+        const value = input.value.trim();
+        if (value) context[key] = value;
+      });
+      const networkChecks = {};
+      Object.entries(networkInputs).forEach(([key, input]) => {
+        if (input.value) networkChecks[key] = input.value === "true";
+      });
+      if (Object.keys(networkChecks).length) context.network_checks = networkChecks;
+      return context;
+    }
 
     document.querySelectorAll(".suggestion").forEach((button) => {
       button.addEventListener("click", () => {
@@ -309,6 +392,19 @@
         reason.textContent = `Motivo de escalación: ${data.escalation_reason}`;
         content.append(reason);
       }
+      if (data.recommended_actions?.length) {
+        const heading = document.createElement("p");
+        heading.textContent = "Pasos recomendados según soporte:";
+        content.append(heading);
+        const actions = document.createElement("ol");
+        actions.className = "steps";
+        data.recommended_actions.forEach((action) => {
+          const item = document.createElement("li");
+          item.textContent = action;
+          actions.append(item);
+        });
+        content.append(actions);
+      }
       const intro = data.answer.match(/^Para [^:]+:\s*/);
       const stepsText = intro ? data.answer.slice(intro[0].length) : "";
       const steps = stepsText.split(/\s(?=\d+\.\s)/).filter(Boolean);
@@ -370,12 +466,17 @@
       addMessage("user", question);
       questionInput.value = "";
       sendButton.disabled = true;
-      const loading = addMessage("agent", "Estoy revisando tu consulta...", "typing");
+      const loading = addMessage("agent", "Consultando Hermes + Kimi y las guías de soporte...", "typing");
       try {
-        const response = await fetch("/agent/ask", {
+        const response = await fetch("/agent/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question, user_id: userId })
+          body: JSON.stringify({
+            question,
+            user_id: userId,
+            context: collectContext(),
+            history: conversationHistory.slice(-10)
+          })
         });
         const data = await response.json();
         loading.parentElement.remove();
@@ -384,6 +485,11 @@
           throw new Error(details);
         }
         renderAnswer(data);
+        conversationHistory.push(
+          { role: "user", content: question },
+          { role: "assistant", content: data.answer }
+        );
+        if (conversationHistory.length > 10) conversationHistory.splice(0, conversationHistory.length - 10);
       } catch (error) {
         if (loading.parentElement.isConnected) loading.parentElement.remove();
         errorMessage.textContent = error instanceof TypeError

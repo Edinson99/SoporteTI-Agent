@@ -1,6 +1,6 @@
 # API Contract
 
-Contrato de API de SoporteTI-Agent v1.3.0.
+Contrato de API de SoporteTI-Agent v1.3.1.
 
 ## `GET /health`
 
@@ -88,3 +88,42 @@ ejecuta comandos ni comprueba conectividad.
 
 La API no autentica `user_id`, no persiste incidencias, no ejecuta comandos,
 instala software, cambia contraseñas ni envía tickets automáticamente.
+
+## `POST /agent/chat`
+
+Ruta local de la interfaz web. Debe llamarse desde loopback; otros clientes
+reciben `403`. Valida `question`, `user_id` y el mismo `context` de diagnóstico,
+y acepta opcionalmente hasta diez mensajes previos:
+
+```json
+{
+  "question": "No tengo internet",
+  "user_id": "USR-1042",
+  "context": {
+    "operating_system": "Windows 11",
+    "network_checks": {
+      "gateway_reachable": true,
+      "dns_resolution": false,
+      "internet_reachable": false
+    }
+  },
+  "history": [
+    {"role": "user", "content": "Tengo problemas de conexión"},
+    {"role": "assistant", "content": "Vamos a revisar los datos disponibles."}
+  ]
+}
+```
+
+El servidor calcula primero el diagnóstico determinista con la base local y
+después invoca `hermes -z` en WSL para que el modelo configurado en Hermes
+redacte `answer`. La respuesta conserva el resto del contrato de
+`AgentAskResponse` para que la interfaz muestre hipótesis, evidencia y pasos
+recomendados. Se envían al modelo la pregunta, el resultado local y el
+historial; `user_id` no se incluye en el prompt. La API key permanece en Hermes.
+Si Hermes/Kimi falla, devuelve `503`; no se presenta la respuesta local como si
+fuera una respuesta del modelo.
+
+Esta ruta de chat no invoca herramientas Hermes/MCP: las herramientas están
+deshabilitadas en el modo de una sola consulta. El diagnóstico local es la
+fuente de conocimiento; Kimi solo lo redacta. El historial se mantiene en la
+memoria de la página y no se guarda en el servidor.

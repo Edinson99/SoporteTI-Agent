@@ -45,6 +45,27 @@ reales: recomienda pasos seguros o indica que el caso necesita revision humana.
 
 6. Para cerrar Hermes, presiona `Ctrl+D`.
 
+## Usar el chat web personalizado con Hermes + Kimi
+
+1. En PowerShell, desde la raiz del proyecto, inicia la aplicacion:
+
+   ```powershell
+   .\scripts\start.ps1
+   ```
+
+2. Abre `http://127.0.0.1:8000`. El encabezado del chat indica
+   **Hermes + Kimi**.
+3. Describe la incidencia y, si ayuda, abre **Datos para afinar el
+   diagnóstico** para completar los datos disponibles.
+4. La aplicacion obtiene primero el diagnostico local y usa Hermes con el
+   modelo configurado (Kimi, en esta guia) para redactar la respuesta.
+
+Hermes debe estar instalado y configurado en WSL. La API key no se introduce en
+la pagina: la pregunta, el diagnostico y los mensajes recientes se envian al
+modelo por Hermes. No incluyas contrasenas, codigos MFA, claves ni informacion
+confidencial. Si Hermes o Kimi no estan disponibles, la pagina mostrara un
+error explicito en vez de fingir que el modelo respondio.
+
 ## Que esperar de la respuesta
 
 - Si existe una guia, Hermes puede resumir los pasos recomendados e indicar la

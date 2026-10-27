@@ -3,15 +3,22 @@
 import json
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
+import app.main as main_module
+import app.hermes_bridge as hermes_bridge
 from app.agent import AgenteSoporteTI
 from app.lambda_handler import handler as lambda_handler
 from app.main import AgentAskResponse, app
 from app.mcp_server import consultar_soporte_ti
 from app.tools import buscar_conocimiento, buscar_conocimientos, cargar_base_conocimiento
 
-client = TestClient(app)
+client = TestClient(
+    app,
+    base_url="http://127.0.0.1",
+    client=("127.0.0.1", 8001),
+)
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
@@ -195,6 +202,11 @@ def test_inicio_sirve_interfaz_grafica():
     assert respuesta.status_code == 200
     assert "text/html" in respuesta.headers["content-type"]
     assert "¿En qué podemos ayudarte?" in respuesta.text
+    assert "Datos para afinar el diagnóstico" in respuesta.text
+    assert "gateway-check" in respuesta.text
+    assert "collectContext()" in respuesta.text
+    assert 'fetch("/agent/chat"' in respuesta.text
+    assert "Hermes + Kimi" in respuesta.text
 
 
 def test_agent_ask_retorna_diagnostico_ti():
@@ -221,6 +233,120 @@ def test_agent_ask_rechaza_question_faltante():
     respuesta = client.post("/agent/ask", json={"user_id": "USR-1042"})
     assert respuesta.status_code == 400
     assert respuesta.json()["detail"] == "Solicitud invalida."
+
+
+def test_chat_hermes_enriquece_diagnostico_local_con_kimi(monkeypatch):
+    def respuesta_modelo(question, diagnostico, history):
+        assert question == "No tengo internet"
+        assert diagnostico["sources"] == ["kb_internet_001"]
+        assert history == [{"role": "user", "content": "Tengo problemas de red"}]
+        return "La hipótesis principal es DNS; aún no está confirmada."
+
+    monkeypatch.setattr(main_module, "generar_respuesta", respuesta_modelo)
+    respuesta = client.post(
+        "/agent/chat",
+        json={
+            "question": "No tengo internet",
+            "user_id": "USR-1042",
+            "context": {
+                "network_checks": {
+                    "gateway_reachable": True,
+                    "dns_resolution": False,
+                    "internet_reachable": False,
+                }
+            },
+            "history": [
+                {"role": "user", "content": "Tengo problemas de red"}
+            ],
+        },
+    )
+    assert respuesta.status_code == 200
+    datos = respuesta.json()
+    assert datos["answer"].startswith("La hipótesis principal")
+    assert datos["diagnosis"]["hypotheses"][0]["cause"].startswith(
+        "La resolucion DNS"
+    )
+    assert datos["sources"] == ["kb_internet_001"]
+
+
+def test_chat_hermes_solo_acepta_acceso_loopback():
+    remote_client = TestClient(
+        app,
+        base_url="http://127.0.0.1",
+        client=("192.168.1.10", 8001),
+    )
+    respuesta = remote_client.post(
+        "/agent/chat",
+        json={"question": "No tengo internet", "user_id": "USR-1042"},
+    )
+    assert respuesta.status_code == 403
+
+
+def test_chat_hermes_informa_fallo_del_modelo_sin_degradarse_silenciosamente(monkeypatch):
+    def fallo_modelo(question, diagnostico, history):
+        assert question == "No tengo internet"
+        assert diagnostico["sources"] == ["kb_internet_001"]
+        assert history == []
+        raise hermes_bridge.HermesBridgeError("Kimi no esta disponible.")
+
+    monkeypatch.setattr(main_module, "generar_respuesta", fallo_modelo)
+    respuesta = client.post(
+        "/agent/chat",
+        json={"question": "No tengo internet", "user_id": "USR-1042"},
+    )
+    assert respuesta.status_code == 503
+    assert respuesta.json()["detail"] == "Kimi no esta disponible."
+
+
+def test_puente_hermes_lanza_cli_sin_herramientas_y_con_referencia_local(monkeypatch):
+    capturado = {}
+
+    def ejecutar(command, **kwargs):
+        capturado["command"] = command
+        capturado["kwargs"] = kwargs
+        return hermes_bridge.subprocess.CompletedProcess(
+            command, 0, stdout="Respuesta redactada por Kimi\n", stderr=""
+        )
+
+    monkeypatch.setattr(hermes_bridge, "_command", lambda prompt: ["hermes", "-z", prompt, "--toolsets", ""])
+    monkeypatch.setattr(hermes_bridge.subprocess, "run", ejecutar)
+    answer = hermes_bridge.generar_respuesta(
+        "No tengo internet",
+        {"sources": ["kb_internet_001"], "answer": "Usa solo pasos seguros."},
+        [{"role": "user", "content": "No resuelve nombres"}],
+    )
+    command = capturado["command"]
+    assert answer == "Respuesta redactada por Kimi"
+    assert command[-2:] == ["--toolsets", ""]
+    assert "kb_internet_001" in command[2]
+    assert "No resuelve nombres" in command[2]
+    assert capturado["kwargs"]["timeout"] == 180
+
+
+def test_puente_hermes_explica_limite_de_kimi(monkeypatch):
+    def rate_limited(command, **kwargs):
+        return hermes_bridge.subprocess.CompletedProcess(
+            command, 2, stdout="HTTP 429: rate-limited", stderr=""
+        )
+
+    monkeypatch.setattr(hermes_bridge, "_command", lambda prompt: ["hermes"])
+    monkeypatch.setattr(hermes_bridge.subprocess, "run", rate_limited)
+    with pytest.raises(hermes_bridge.HermesBridgeError, match="limite temporal"):
+        hermes_bridge.generar_respuesta("No tengo internet", {}, [])
+
+
+def test_comando_wsl_escapa_el_prompt_y_permite_fijar_distribucion(monkeypatch):
+    monkeypatch.setattr(hermes_bridge.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(hermes_bridge.shutil, "which", lambda _: "wsl.exe")
+    monkeypatch.setenv("SOPORTE_HERMES_WSL_DISTRO", "Ubuntu")
+
+    command = hermes_bridge._command("texto ' ; no ejecutar")
+
+    assert command[:4] == ["wsl.exe", "--distribution", "Ubuntu", "--exec"]
+    assert command[-3:-1] == ["bash", "-lc"]
+    assert "exec hermes -z" in command[-1]
+    assert "no ejecutar" in command[-1]
+    assert "--toolsets ''" in command[-1]
 
 
 def test_herramienta_mcp_consulta_el_diagnostico_compartido():

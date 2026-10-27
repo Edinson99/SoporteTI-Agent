@@ -4,7 +4,8 @@
 
 | Capa | Componente | Responsabilidad | Tecnologia |
 | --- | --- | --- | --- |
-| Interfaz HTTP | `app/main.py` | Expone `GET /health` y `POST /agent/ask`. | FastAPI |
+| Interfaz HTTP | `app/main.py` | Expone `GET /health`, `POST /agent/ask` y el chat local `POST /agent/chat`. | FastAPI |
+| Chat Hermes | `app/hermes_bridge.py` | Envia el resultado del diagnostico local al Hermes CLI sin habilitar herramientas; Hermes usa su modelo configurado para redactar la respuesta. | Hermes CLI / WSL |
 | Contrato HTTP | `AgentAskRequest`, `AgentAskResponse` | Valida solicitud y estructura de respuesta. | Pydantic |
 | Adaptador Lambda | `app/lambda_handler.py` | Adapta eventos de API Gateway HTTP API al mismo contrato y agente. | AWS Lambda |
 | Orquestacion compartida | `app/agent.py` (`AgenteSoporteTI`) | Coordina busqueda, preguntas de seguimiento, recomendaciones y escalacion. | Python |
@@ -31,6 +32,8 @@ flowchart TB
     end
     subgraph Servicio["SoporteTI-Agent - logica compartida"]
         API["FastAPI<br/>POST /agent/ask"]
+        CHAT["POST /agent/chat<br/>loopback"]
+        BRIDGE["hermes -z<br/>toolsets vacios"]
         LAMBDA["Handler Lambda<br/>app.lambda_handler"]
         MCP["Servidor MCP stdio<br/>consultar_soporte_ti"]
         VALID["Pydantic<br/>validacion del contrato"]
@@ -47,6 +50,7 @@ flowchart TB
     U --> HTTP
     U --> GATEWAY
     HTTP --> API
+    HTTP --> CHAT
     GATEWAY --> LAMBDA
     HERMES <-->|"conversacion del modelo"| KIMI
     HERMES -->|"MCP stdio"| MCP
@@ -57,6 +61,9 @@ flowchart TB
     VALID -->|"valido"| AGENT
     AGENT --> SEARCH
     AGENT --> DIAG
+    CHAT --> AGENT
+    CHAT --> BRIDGE
+    BRIDGE -->|"modelo configurado (Kimi)"| KIMI
     SEARCH --> KB
     KB --> DECISION
     DECISION -->|"si"| ANSWER
@@ -68,11 +75,11 @@ flowchart TB
     HERMES -->|"respuesta redactada"| U
 ```
 
-La API HTTP, el handler Lambda y el servidor MCP son **tres adaptadores de
-entrada** a la logica del mismo `AgenteSoporteTI`; Hermes/Kimi no sustituyen ni
-modifican esa logica. La integracion MCP local no requiere iniciar FastAPI ni
-desplegar AWS. Kimi solo participa en la conversacion Hermes: la herramienta
-MCP devuelve el resultado estructurado del diagnostico.
+La API HTTP, el handler Lambda, el servidor MCP y el chat web reutilizan la
+logica de `AgenteSoporteTI`. El chat web añade una segunda etapa de redaccion
+con Hermes/Kimi, despues del diagnostico local. No habilita herramientas del
+modelo. El servidor MCP sigue disponible para que Hermes lo invoque en sus
+propias sesiones.
 
 Para la configuracion reproducible, consulta la
 [guia tecnica Hermes + Kimi](guia-tecnica-hermes-kimi.md) y, para el uso
@@ -93,6 +100,7 @@ cotidiano, la [guia para usuarios](guia-usuario-hermes-kimi.md).
 
 - **Local conversacional:** Hermes inicia `app.mcp_server` por stdio, utilizando el entorno Python configurado en Hermes. La credencial de Kimi reside en la configuracion privada de Hermes.
 - **API HTTP:** FastAPI valida `POST /agent/ask` y responde con el contrato descrito en [api-contract.md](api-contract.md).
+- **Chat web + Hermes/Kimi:** `POST /agent/chat` solo acepta loopback, calcula el diagnostico local y lanza `hermes -z` con las herramientas deshabilitadas; el historial vive en el navegador.
 - **AWS SAM:** API Gateway HTTP API invoca `app.lambda_handler.handler`, que comparte los modelos Pydantic y el agente.
 
 ## Datos, seguridad y limites
@@ -100,9 +108,10 @@ cotidiano, la [guia para usuarios](guia-usuario-hermes-kimi.md).
 - `data/conocimiento_soporte.json` se versiona junto con el codigo; los articulos no se descargan de una fuente externa durante la solicitud.
 - El borrador de escalacion no se guarda ni se envia. `incident_id` permanece en `null`; un sistema de tickets requiere integracion, persistencia y aprobacion explicita.
 - La API HTTP documentada no incluye autenticacion. Antes de exponerla en una red publica se deben anadir autenticacion, autorizacion, limites de uso y transporte seguro.
+- El puente del chat web tambien es solo local: requiere Hermes accesible desde WSL y el modelo/cuota configurados. La pregunta, el resultado local y el historial de la conversacion se envian al proveedor del modelo a traves de Hermes; no se envia `user_id`.
 - MCP stdio es local al entorno que ejecuta Hermes. No se debe exponer como servicio remoto sin autenticacion y transporte seguro.
 - Las claves API no pertenecen a la base de conocimiento ni al repositorio. Kimi se configura en Hermes y `.env` se mantiene local.
-- El backend determinista no consulta Kimi. La conversacion con el modelo ocurre en Hermes; el backend entrega datos estructurados al modelo mediante MCP.
+- `POST /agent/ask` y el diagnostico base no consultan Kimi. En `POST /agent/chat`, Hermes/Kimi redactan la respuesta sobre el resultado local; esta ruta no delega al modelo la seleccion de fuentes ni habilita herramientas.
 
 ## Limites y trabajo futuro
 

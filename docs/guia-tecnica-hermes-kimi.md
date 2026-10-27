@@ -2,7 +2,9 @@
 
 Esta guia documenta la integracion verificada en Windows 11 + Ubuntu/WSL2:
 
-- Hermes Agent como interfaz y orquestador.
+- Hermes Agent como redactor/orquestador en sus sesiones propias.
+- El chat web de SoporteTI-Agent como interfaz personalizada que invoca Hermes
+  localmente despues de generar el diagnostico estructurado.
 - Kimi como proveedor del modelo por la API global de Moonshot.
 - SoporteTI-Agent como servidor MCP local por stdio.
 - Una herramienta de solo diagnostico que reutiliza la misma logica de la API FastAPI.
@@ -17,11 +19,11 @@ humana. No se requiere desplegar la API FastAPI para utilizar MCP localmente.
 Usuario
   |
   v
-Hermes Agent --------------------> API global de Kimi
-  |                                  HTTPS / Chat Completions
-  | MCP stdio
-  v
-SoporteTI-Agent (app.mcp_server)
+Chat web -> FastAPI -> AgenteSoporteTI -> Hermes CLI -> Kimi
+                            |           herramientas deshabilitadas
+                            +--> base local de conocimiento
+
+Hermes interactivo -> MCP stdio -> SoporteTI-Agent (app.mcp_server)
   |
   +--> AgenteSoporteTI
          +--> buscar_conocimiento --> data/conocimiento_soporte.json
@@ -30,8 +32,34 @@ SoporteTI-Agent (app.mcp_server)
 
 La herramienta se anuncia a Hermes como
 `mcp__soporte_ti__consultar_soporte_ti`. Sus argumentos son `question`,
-`user_id` y `context` opcional. La respuesta contiene `answer`, `sources`,
-`needs_approval` y `next_action`.
+`user_id` y `context` opcional. La respuesta usa el contrato de diagnóstico
+v1.3.
+
+## Chat web personalizado con Hermes + Kimi
+
+El endpoint local `POST /agent/chat` conecta la interfaz personalizada sin
+exponer la clave de Kimi:
+
+1. FastAPI valida la solicitud y obtiene el diagnostico de
+   `AgenteSoporteTI` y de la base de conocimiento local.
+2. FastAPI inicia `hermes -z ... --toolsets ''` en WSL. Hermes usa el proveedor
+   y modelo guardados en su configuracion privada; en esta configuracion se usa
+   Kimi.
+3. Hermes/Kimi redacta la respuesta usando la pregunta, el resultado local y
+   hasta diez mensajes anteriores. `user_id` no se incluye en el prompt.
+4. El navegador muestra la redaccion del modelo junto a las hipotesis, fuentes,
+   evidencia y acciones estructuradas del diagnostico local.
+
+El historial vive en la memoria de la pagina y se borra al recargar. La ruta
+web deshabilita todas las herramientas en Hermes: Kimi no ejecuta comandos ni
+invoca MCP desde el chat. La base local determina las guias, evidencias y pasos
+antes de enviar el resultado al modelo. El transporte MCP sigue disponible
+para sesiones interactivas de Hermes.
+
+La ruta es solo loopback y requiere Hermes en WSL. Pregunta, diagnostico local
+e historial se envian al proveedor configurado mediante Hermes; no introduzcas
+datos confidenciales. Si Hermes o Kimi falla, la ruta devuelve un error `503`
+explicito en vez de fingir una respuesta del modelo.
 
 ## Requisitos y ubicacion
 
