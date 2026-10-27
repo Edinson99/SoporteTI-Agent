@@ -47,6 +47,8 @@
       border: 1px solid #dcefe8; border-radius: 999px; background: #f5fffb;
       color: #21845f; font-size: 12px; font-weight: 650;
     }
+    .ticket-link { color: var(--blue); font-size: 12px; font-weight: 700; text-decoration: none; }
+    .ticket-link:hover { text-decoration: underline; }
     .availability::before { width: 7px; height: 7px; border-radius: 50%; background: #28b783; content: ""; }
     main { width: min(900px, 100%); margin: 54px auto 0; }
     .intro { margin-bottom: 25px; text-align: center; }
@@ -90,6 +92,15 @@
     .message.agent { align-items: flex-start; gap: 11px; }
     .message.agent .bubble { max-width: 84%; }
     .message.agent.escalation .bubble { border-color: #f3dfad; background: #fffaf0; }
+    .contact-form { display: grid; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid #eadfbe; }
+    .contact-form h3 { margin: 0; font-size: 14px; }
+    .contact-form p { margin: 0; color: #68778c; font-size: 12px; }
+    .contact-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+    .contact-field { display: grid; gap: 5px; color: #68778c; font-size: 11px; }
+    .contact-field input { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; }
+    .contact-form button { justify-self: start; padding: 9px 13px; border: 0; border-radius: 9px; background: var(--blue); color: white; font-size: 12px; font-weight: 700; }
+    .contact-form button:disabled { cursor: wait; opacity: .7; }
+    .ticket-submit-status { color: #42536b !important; }
     .steps { margin: 9px 0 0; padding-left: 21px; }
     .steps li { padding: 3px 0 3px 3px; }
     .meta { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(130, 150, 180, .18); color: var(--muted); font-size: 11px; }
@@ -138,13 +149,13 @@
       main { margin-top: 39px; }
       .intro { margin-bottom: 20px; }
       .workspace { border-radius: 17px; }
-      .workspace-head { align-items: flex-start; padding: 15px; }
+      .workspace-head { align-items: flex-start; padding: 15px; flex-wrap: wrap; }
       .user-field { align-items: flex-end; flex-direction: column; gap: 5px; }
       .user-field input { width: 115px; }
       .chat { min-height: 240px; padding: 20px 15px; }
       .quick-start { padding: 0 15px 17px; }
       .context-panel { margin: 0 15px 16px; }
-      .context-fields { grid-template-columns: 1fr; }
+      .context-fields, .contact-form-grid { grid-template-columns: 1fr; }
       .context-help { grid-column: auto; }
       .composer { padding: 14px 13px 16px; }
       .composer form { align-items: stretch; flex-direction: column; gap: 9px; }
@@ -172,7 +183,7 @@
         </div>
         <div><div class="brand-name">Soporte TI</div><div class="brand-caption">Asistencia inteligente para tu equipo</div></div>
       </div>
-      <div class="availability">Agente disponible</div>
+      <a class="ticket-link" href="/tickets">Seguimiento de tickets</a>
     </header>
 
     <main>
@@ -344,7 +355,7 @@
       return bubble;
     }
 
-    function renderAnswer(data) {
+    function renderAnswer(data, pendingTicket) {
       const content = document.createElement("div");
       if (data.diagnosis?.summary) {
         const summary = document.createElement("p");
@@ -391,6 +402,16 @@
         const reason = document.createElement("p");
         reason.textContent = `Motivo de escalación: ${data.escalation_reason}`;
         content.append(reason);
+      }
+      if (data.incident_id) {
+        const ticket = document.createElement("p");
+        const emailStatus = {
+          sent: "aviso enviado al técnico",
+          failed: "ticket guardado; no se pudo enviar el correo",
+          not_configured: "ticket guardado; falta configurar el correo",
+        }[data.ticket_email_status] || "ticket guardado";
+        ticket.textContent = `Ticket ${data.incident_id} · ${emailStatus}`;
+        content.append(ticket);
       }
       if (data.recommended_actions?.length) {
         const heading = document.createElement("p");
@@ -442,8 +463,91 @@
 
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = `${data.needs_approval ? "Requiere revisión humana" : "Guía: " + (data.sources.join(", ") || "soporte TI")} · Prioridad ${data.priority} · ${data.next_action.replaceAll("_", " ")}`;
+      const modelStatus = data.chat_model_status === "not_used_escalation"
+        ? " · Para escalar no se requiere Hermes/Kimi"
+        : "";
+      meta.textContent = `${data.needs_approval ? "Requiere revisión humana" : "Guía: " + (data.sources.join(", ") || "soporte TI")} · Prioridad ${data.priority} · ${data.next_action.replaceAll("_", " ")}${modelStatus}`;
       content.append(meta);
+      if (data.contact_required && data.ticket_request_id) {
+        const contactForm = document.createElement("form");
+        contactForm.className = "contact-form";
+        const title = document.createElement("h3");
+        title.textContent = "Antes de enviar el caso al técnico";
+        const privacy = document.createElement("p");
+        privacy.textContent = "Completa tus datos de contacto. Se compartirán con el técnico y se guardarán junto con el ticket local.";
+        contactForm.append(title, privacy);
+
+        const fieldGrid = document.createElement("div");
+        fieldGrid.className = "contact-form-grid";
+        const fields = [
+          ["name", "Nombre completo", "text", "name"],
+          ["email", "Correo electrónico", "email", "email"],
+          ["phone", "Número de contacto", "tel", "tel"],
+        ];
+        const inputs = {};
+        fields.forEach(([key, labelText, type, autocomplete]) => {
+          const label = document.createElement("label");
+          label.className = "contact-field";
+          label.textContent = labelText;
+          const input = document.createElement("input");
+          input.type = type;
+          input.name = key;
+          input.autocomplete = autocomplete;
+          input.required = true;
+          input.maxLength = key === "name" ? 100 : key === "email" ? 254 : 30;
+          inputs[key] = input;
+          label.append(input);
+          fieldGrid.append(label);
+        });
+        const submit = document.createElement("button");
+        submit.type = "submit";
+        submit.textContent = "Crear ticket y avisar al técnico";
+        const status = document.createElement("p");
+        status.className = "ticket-submit-status";
+        status.setAttribute("role", "status");
+        contactForm.append(fieldGrid, submit, status);
+        content.append(contactForm);
+
+        contactForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          submit.disabled = true;
+          status.textContent = "Guardando el ticket y enviando el aviso...";
+          try {
+            const response = await fetch("/agent/tickets", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...pendingTicket,
+                request_id: data.ticket_request_id,
+                assistant_response: data.answer,
+                contact: Object.fromEntries(
+                  Object.entries(inputs).map(([key, input]) => [key, input.value.trim()])
+                )
+              })
+            });
+            const ticket = await response.json();
+            if (!response.ok) {
+              const details = ticket.errors?.map((item) => item.msg).join(" ")
+                || ticket.detail
+                || "No se pudo crear el ticket.";
+              throw new Error(details);
+            }
+            const emailStatus = {
+              pending: "ticket guardado; el aviso está en proceso",
+              sent: "correo enviado al técnico",
+              failed: "ticket guardado; falló el envío del correo",
+              not_configured: "ticket guardado; falta configurar el correo",
+            }[ticket.email_status];
+            status.textContent = `Ticket ${ticket.ticket_number} · ${emailStatus}. Puedes seguirlo en el panel local.`;
+            contactForm.querySelectorAll("input, button").forEach((input) => { input.disabled = true; });
+          } catch (error) {
+            status.textContent = error instanceof TypeError
+              ? "No se pudo conectar con el servicio. Inténtalo nuevamente."
+              : error.message;
+            submit.disabled = false;
+          }
+        });
+      }
       addMessage("agent", content, data.needs_approval ? "escalation" : "");
     }
 
@@ -463,6 +567,8 @@
         return;
       }
 
+      const submittedContext = collectContext();
+      const submittedHistory = conversationHistory.slice(-10);
       addMessage("user", question);
       questionInput.value = "";
       sendButton.disabled = true;
@@ -474,8 +580,8 @@
           body: JSON.stringify({
             question,
             user_id: userId,
-            context: collectContext(),
-            history: conversationHistory.slice(-10)
+            context: submittedContext,
+            history: submittedHistory
           })
         });
         const data = await response.json();
@@ -484,12 +590,17 @@
           const details = data.errors?.map((item) => item.msg).join(" ") || data.detail || "No se pudo procesar la solicitud.";
           throw new Error(details);
         }
-        renderAnswer(data);
         conversationHistory.push(
           { role: "user", content: question },
           { role: "assistant", content: data.answer }
         );
         if (conversationHistory.length > 10) conversationHistory.splice(0, conversationHistory.length - 10);
+        renderAnswer(data, {
+          question,
+          user_id: userId,
+          context: submittedContext,
+          history: submittedHistory
+        });
       } catch (error) {
         if (loading.parentElement.isConnected) loading.parentElement.remove();
         errorMessage.textContent = error instanceof TypeError

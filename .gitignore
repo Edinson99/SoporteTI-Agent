@@ -19,6 +19,11 @@ env/
 # Variables de entorno (contienen secretos)
 .env
 
+# Tickets y datos locales
+data/tickets.sqlite3
+data/tickets.sqlite3-shm
+data/tickets.sqlite3-wal
+
 # IDE
 .idea/
 .vscode/

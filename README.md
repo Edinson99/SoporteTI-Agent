@@ -2,10 +2,12 @@
 
 **Un asistente de soporte TI que convierte incidencias comunes en pasos claros y seguros.**
 
-**Version 1.3.1:** integra el chat web con Hermes y el modelo configurado
-(Kimi en la configuracion documentada), manteniendo el diagnostico local de
-la version 1.3.0. Consulta las [notas de la version 1.3.1](docs/version-1.3.1.md)
-y las [notas de la version 1.3.0](docs/version-1.3.md).
+**Version 1.3.3:** solicita nombre y datos de contacto antes de crear y enviar
+un ticket sin guia; incluye un panel local para seguirlo y marcarlo resuelto.
+Consulta las [notas 1.3.3](docs/version-1.3.3.md), las
+[notas 1.3.2](docs/version-1.3.2.md), las
+[notas 1.3.1](docs/version-1.3.1.md) y las
+[notas 1.3.0](docs/version-1.3.md).
 
 Describe el problema; SoporteTI-Agent busca una guía local, devuelve recomendaciones con su fuente y, cuando no encuentra una respuesta, solicita revisión humana en lugar de inventar una solución.
 
@@ -18,7 +20,8 @@ Describe el problema; SoporteTI-Agent busca una guía local, devuelve recomendac
 - 🧑‍💻 Aceptar contexto opcional del equipo, como dispositivo y sistema operativo.
 - 🧪 Proponer hipótesis provisionales y pruebas de descarte a partir de las guías y de comprobaciones de red reportadas por el usuario.
 - ❓ Preguntar por sistema operativo, alcance, mensaje de error y cambios recientes cuando falten esos datos.
-- 🙋 Solicitar revisión humana si no encuentra una guía; prepara un borrador temporal, no un ticket real.
+- 🙋 Pedir nombre, correo y teléfono antes de crear y notificar un ticket sin guía.
+- 📋 Permitir al técnico revisar tickets locales, registrar una nota y marcarlos resueltos.
 - 🔌 Ofrecer diagnóstico local mediante API HTTP, AWS Lambda o MCP; el chat web puede redactar la respuesta mediante Hermes y el modelo configurado en la estación.
 - ✅ Validar las solicitudes y responder con un contrato JSON consistente.
 
@@ -103,6 +106,14 @@ error explícito en lugar de fingir una respuesta de Kimi. El endpoint
 determinista `POST /agent/ask` sigue disponible para clientes que no requieren
 el modelo.
 
+Cuando no hay una guia de conocimiento, el chat solicita nombre, correo y
+telefono de contacto. Solo al enviar el formulario se guarda un ticket local
+con numero `STI-AAAAMMDD-######` y se intenta notificar al tecnico por correo.
+El seguimiento esta en
+`http://127.0.0.1:8000/tickets`; alli se puede anotar la solucion y marcar el
+caso resuelto. Configura Gmail SMTP en `.env` con una contrasena de aplicacion.
+Consulta [las notas 1.3.3](docs/version-1.3.3.md).
+
 ## 🔗 Formas de integración y despliegue
 
 | Modalidad | Qué ofrece | Documentación |
@@ -128,15 +139,17 @@ El script construye y despliega el stack, y muestra la URL de la API al finaliza
 3. Si hay una guía, se devuelven hasta tres fuentes, hipótesis provisionales, evidencias textuales y pasos recomendados.
 4. Si faltan datos, la respuesta propone preguntas sobre sistema operativo, alcance, error y cambios recientes.
 5. Si el usuario incluye `context.network_checks`, el agente interpreta esos valores como resultados declarados, sin ejecutar pruebas en su equipo.
-6. Si no hay coincidencia, se devuelve un borrador de escalación temporal y `needs_approval: true`.
+6. Si no hay coincidencia, el chat pide datos de contacto; el ticket y el correo se crean solo cuando el usuario confirma el formulario.
 
-La API, Lambda, MCP y el chat web comparten la misma lógica determinista de diagnóstico. El chat web usa Hermes/Kimi para redactar, pero no delega el diagnóstico al modelo ni le habilita herramientas de ejecución. Consulta el [mapa de arquitectura](docs/arquitectura.md) y la [matriz de componentes y verificación](docs/reporte-matriz-v0.1.md) para más detalle.
+La API, Lambda, MCP y el chat web comparten la misma lógica determinista de diagnóstico. La persistencia y el aviso por correo de esta versión aplican a los endpoints HTTP locales; no a Lambda ni a MCP. El chat web usa Hermes/Kimi para redactar, pero no delega el diagnóstico al modelo ni le habilita herramientas de ejecución. Consulta el [mapa de arquitectura](docs/arquitectura.md) y la [matriz de componentes y verificación](docs/reporte-matriz-v0.1.md) para más detalle.
 
 ## 🔒 Límites y seguridad
 
 - El agente **recomienda**, pero no ejecuta comandos ni modifica el equipo; los resultados de `network_checks` no se verifican desde el servidor.
-- No instala software, no cambia contraseñas y no crea ni envía tickets reales.
-- Los borradores de escalación no se guardan: existen solo durante la solicitud. `incident_id` es `null`; la persistencia de tickets queda fuera de esta versión.
+- No instala software ni cambia contraseñas. Los tickets solo se crean cuando no hay guía y se guardan localmente en SQLite; no se envían a una mesa de servicio externa.
+- El correo requiere una contraseña de aplicación Gmail en el `.env` local. El secreto nunca se almacena en la base de tickets ni debe incluirse en el repositorio.
+- El ticket conserva la conversacion y el texto de la consulta en SQLite local; protege el archivo y no incluyas credenciales ni datos confidenciales en el chat.
+- El panel de seguimiento contiene datos personales y solo está protegido por acceso loopback; úsalo únicamente en un equipo local de confianza. No ofrece autenticación de técnicos.
 - La base de conocimiento está versionada localmente; el backend no consulta Kimi ni servicios externos para diagnosticar.
 - El chat web envía la pregunta, el resultado local de diagnóstico y hasta diez turnos previos al modelo configurado en Hermes. El historial vive solo en la memoria de la página y se pierde al recargar.
 - Hermes se invoca sin herramientas para la ruta web: Kimi solo redacta a partir del resultado local; no ejecuta comandos ni invoca herramientas MCP desde esa ruta.

@@ -1,6 +1,7 @@
 """Pruebas del flujo objetivo -> herramientas -> resultado -> limites."""
 
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from app.agent import AgenteSoporteTI
 from app.lambda_handler import handler as lambda_handler
 from app.main import AgentAskResponse, app
 from app.mcp_server import consultar_soporte_ti
+from app.tickets import TicketService
 from app.tools import buscar_conocimiento, buscar_conocimientos, cargar_base_conocimiento
 
 client = TestClient(
@@ -206,7 +208,16 @@ def test_inicio_sirve_interfaz_grafica():
     assert "gateway-check" in respuesta.text
     assert "collectContext()" in respuesta.text
     assert 'fetch("/agent/chat"' in respuesta.text
+    assert 'fetch("/agent/tickets"' in respuesta.text
+    assert 'href="/tickets"' in respuesta.text
     assert "Hermes + Kimi" in respuesta.text
+
+
+def test_panel_de_seguimiento_se_sirve_solo_en_loopback():
+    respuesta = client.get("/tickets")
+    assert respuesta.status_code == 200
+    assert "Marcar resuelto" in respuesta.text
+    assert 'fetch("/api/tickets")' in respuesta.text
 
 
 def test_agent_ask_retorna_diagnostico_ti():
@@ -233,6 +244,21 @@ def test_agent_ask_rechaza_question_faltante():
     respuesta = client.post("/agent/ask", json={"user_id": "USR-1042"})
     assert respuesta.status_code == 400
     assert respuesta.json()["detail"] == "Solicitud invalida."
+
+
+def test_agent_ask_solicita_contacto_antes_de_crear_ticket():
+    respuesta = client.post(
+        "/agent/ask",
+        json={"question": "La cafetera no funciona", "user_id": "USR-1042"},
+    )
+
+    assert respuesta.status_code == 200
+    datos = respuesta.json()
+    assert datos["needs_approval"] is True
+    assert datos["incident_id"] is None
+    assert datos["ticket_email_status"] is None
+    assert datos["contact_required"] is True
+    assert datos["ticket_request_id"]
 
 
 def test_chat_hermes_enriquece_diagnostico_local_con_kimi(monkeypatch):
@@ -267,6 +293,138 @@ def test_chat_hermes_enriquece_diagnostico_local_con_kimi(monkeypatch):
         "La resolucion DNS"
     )
     assert datos["sources"] == ["kb_internet_001"]
+
+
+def test_chat_sin_guia_solicita_contacto_y_no_guarda_antes_de_autorizar(
+    tmp_path, monkeypatch
+):
+    service = TicketService(tmp_path / "tickets.sqlite3")
+    monkeypatch.setattr(main_module, "ticket_service", service)
+    respuesta = client.post(
+        "/agent/chat",
+        json={
+            "question": "La cafetera no funciona",
+            "user_id": "USR-1042",
+            "history": [
+                {"role": "user", "content": "El problema empezo esta manana"},
+                {"role": "assistant", "content": "¿Que ocurre al encenderla?"},
+            ],
+        },
+    )
+
+    assert respuesta.status_code == 200
+    datos = respuesta.json()
+    assert datos["contact_required"] is True
+    assert datos["ticket_request_id"]
+    assert datos["chat_model_status"] == "not_used_escalation"
+    assert not service.database_path.exists()
+
+
+def test_crear_ticket_exige_contacto_y_envia_conversacion(tmp_path, monkeypatch):
+    monkeypatch.setenv("SMTP_APP_PASSWORD", "")
+    service = TicketService(tmp_path / "tickets.sqlite3")
+    monkeypatch.setattr(main_module, "ticket_service", service)
+    response = client.post(
+        "/agent/tickets",
+        json={
+            "request_id": "25038ee8-92a5-4db4-b4b2-965983e367de",
+            "question": "La cafetera no funciona",
+            "user_id": "USR-1042",
+            "history": [
+                {"role": "user", "content": "El problema empezo esta manana"},
+                {"role": "assistant", "content": "¿Que ocurre al encenderla?"},
+            ],
+            "contact": {
+                "name": "Javier Perez",
+                "email": "javier@example.com",
+                "phone": "+57 300 123 4567",
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    ticket = response.json()
+    assert ticket["ticket_number"].startswith("STI-")
+    assert ticket["email_status"] == "not_configured"
+    with sqlite3.connect(service.database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT contact_name, contact_email, contact_phone, conversation_json
+            FROM tickets WHERE ticket_number = ?
+            """,
+            (ticket["ticket_number"],),
+        ).fetchone()
+    assert row[:3] == ("Javier Perez", "javier@example.com", "+57 300 123 4567")
+    assert "El problema empezo esta manana" in row[3]
+    assert "La cafetera no funciona" in row[3]
+
+
+def test_crear_ticket_rechaza_contacto_invalido_y_consultas_con_guia():
+    missing_contact = client.post(
+        "/agent/tickets",
+        json={
+            "request_id": "25038ee8-92a5-4db4-b4b2-965983e367de",
+            "question": "La cafetera no funciona",
+            "user_id": "USR-1042",
+        },
+    )
+    assert missing_contact.status_code == 400
+
+    known_issue = client.post(
+        "/agent/tickets",
+        json={
+            "request_id": "25038ee8-92a5-4db4-b4b2-965983e367df",
+            "question": "No tengo internet",
+            "user_id": "USR-1042",
+            "contact": {
+                "name": "Javier Perez",
+                "email": "javier@example.com",
+                "phone": "+57 300 123 4567",
+            },
+        },
+    )
+    assert known_issue.status_code == 409
+
+
+def test_panel_de_tickets_lista_y_marca_resuelto(tmp_path, monkeypatch):
+    service = TicketService(tmp_path / "tickets.sqlite3")
+    monkeypatch.setattr(main_module, "ticket_service", service)
+    created = client.post(
+        "/agent/tickets",
+        json={
+            "request_id": "35038ee8-92a5-4db4-b4b2-965983e367de",
+            "question": "La cafetera no funciona",
+            "user_id": "USR-1042",
+            "contact": {
+                "name": "Javier Perez",
+                "email": "javier@example.com",
+                "phone": "+57 300 123 4567",
+            },
+        },
+    ).json()
+
+    listed = client.get("/api/tickets")
+    assert listed.status_code == 200
+    assert listed.json()[0]["ticket_number"] == created["ticket_number"]
+    resolved = client.post(
+        f"/api/tickets/{created['ticket_number']}/resolve",
+        json={"note": "Se restablecio el cable de alimentacion."},
+    )
+
+    assert resolved.status_code == 200
+    assert resolved.json()["status"] == "resolved"
+    assert resolved.json()["resolution_note"] == "Se restablecio el cable de alimentacion."
+    assert resolved.json()["resolved_at"]
+
+
+def test_rutas_de_tickets_solo_aceptan_loopback():
+    remote_client = TestClient(
+        app,
+        base_url="http://127.0.0.1",
+        client=("192.168.1.10", 8001),
+    )
+    assert remote_client.get("/tickets").status_code == 403
+    assert remote_client.get("/api/tickets").status_code == 403
 
 
 def test_chat_hermes_solo_acepta_acceso_loopback():

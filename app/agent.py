@@ -27,8 +27,8 @@ class AgenteSoporteTI:
             borrador = crear_borrador_ticket(question, user_id)
             return {
                 "answer": (
-                    f"No encontre una guia segura para {dispositivo}. Se preparo un borrador para "
-                    "revision humana; no se enviara ni se ejecutara ningun cambio automaticamente."
+                    f"No encontre una guia segura para {dispositivo}. El caso requiere "
+                    "revision humana; no se ejecutara ningun cambio automaticamente."
                 ),
                 "sources": ["protocolo_escalamiento"],
                 "needs_approval": True,
