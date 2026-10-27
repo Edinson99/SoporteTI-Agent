@@ -5,7 +5,7 @@
 | Capa | Componente | Responsabilidad | Tecnologia |
 | --- | --- | --- | --- |
 | Interfaz HTTP | `app/main.py` | Expone `GET /health`, `POST /agent/ask` y el chat local `POST /agent/chat`. | FastAPI |
-| Chat Hermes | `app/hermes_bridge.py` | Envia el resultado del diagnostico local al Hermes CLI sin habilitar herramientas; Hermes usa su modelo configurado para redactar la respuesta. | Hermes CLI / WSL |
+| Chat Hermes | `app/hermes_bridge.py` | Envia pregunta, historial y diagnostico local a Hermes en cada turno del chat, incluidas las consultas sin guia; las herramientas permanecen deshabilitadas. | Hermes CLI / WSL |
 | Contrato HTTP | `AgentAskRequest`, `AgentAskResponse` | Valida solicitud y estructura de respuesta. | Pydantic |
 | Adaptador Lambda | `app/lambda_handler.py` | Adapta eventos de API Gateway HTTP API al mismo contrato y agente. | AWS Lambda |
 | Orquestacion compartida | `app/agent.py` (`AgenteSoporteTI`) | Coordina busqueda, preguntas de seguimiento, recomendaciones y escalacion. | Python |
@@ -16,8 +16,15 @@
 | Orquestador conversacional | Hermes Agent | Presenta la conversacion y decide cuando invocar la herramienta MCP. | Hermes |
 | Modelo conversacional | Kimi configurado en Hermes | Interpreta la conversacion y redacta la respuesta; no es parte del backend Python. | API Moonshot |
 | Configuracion de Hermes | `~/.hermes/config.yaml` y entorno privado de Hermes | Registra el servidor MCP y mantiene la credencial del proveedor fuera del repositorio. | YAML y entorno local |
+| Confirmacion de ticket | `POST /agent/tickets` y formulario web | Exige datos de contacto y consentimiento explicito antes de crear el ticket o notificar al tecnico. | FastAPI / navegador |
+| Servicio de tickets | `app/tickets.py` | Persiste tickets en SQLite por defecto; envia el correo al tecnico con copia (`Cc`) al usuario despues de guardar. | SQLite / SMTP Gmail |
+| Backend Firebase | `app/dataconnect_tickets.py` | Implementa persistencia alternativa de tickets, mensajes y auditoria mediante las operaciones del conector. | Python |
+| Puente Data Connect | `app/dataconnect_bridge.mjs` | Ejecuta operaciones permitidas con Firebase Admin SDK y Application Default Credentials (ADC); no acepta consultas arbitrarias del navegador. | Node.js |
+| Servicio Data Connect | `dataconnect/` | Define esquema descargado, conector `support` y operaciones para crear, listar, consultar, resolver tickets y actualizar el estado del correo. | Firebase Data Connect |
+| Base persistente | Cloud SQL `soporteit-tickets-database` | Almacena las tablas existentes de tickets, mensajes y eventos de auditoria. No se aplican migraciones desde la app. | Cloud SQL for PostgreSQL |
 | Despliegue HTTP | `template.yaml` | Define API Gateway HTTP API y la funcion Lambda de SAM. | AWS SAM |
 | Calidad | `tests/test_agent.py` | Verifica contratos, busqueda, escalacion, MCP y API. | Pytest |
+| Calidad de tickets | `tests/test_tickets.py`, `tests/test_dataconnect_tickets.py` | Verifica persistencia SQLite/Data Connect, idempotencia, escalacion con consentimiento, correo y seguimiento. | Pytest |
 
 ## Mapa del flujo de solicitud
 
@@ -43,8 +50,17 @@ flowchart TB
         DECISION{"¿Hay guia coincidente?"}
         KB[("data/conocimiento_soporte.json")]
         ANSWER["Pasos seguros<br/>source: articulo"]
-        DRAFT["Borrador local<br/>needs_approval: true"]
+        DRAFT["Propuesta de escalamiento<br/>needs_approval: true"]
         RESP["Respuesta JSON<br/>answer, sources, next_action"]
+        TICKET_API["POST /agent/tickets<br/>contacto + consentimiento"]
+        TICKET_SVC{"SOPORTE_TICKETS_BACKEND"}
+        SQLITE[("SQLite<br/>data/tickets.sqlite3")]
+        PY_FDC["FirebaseDataConnectTicketService<br/>app/dataconnect_tickets.py"]
+        NODE_BRIDGE["Puente Node<br/>Firebase Admin SDK + ADC"]
+        CONNECTOR["Data Connect<br/>conector support"]
+        CLOUDSQL[("Cloud SQL<br/>tickets, mensajes, auditoria")]
+        SMTP["Gmail SMTP<br/>To: tecnico<br/>Cc: usuario"]
+        UI["Interfaz web<br/>confirma contacto y autorizacion"]
     end
 
     U --> HTTP
@@ -70,16 +86,46 @@ flowchart TB
     DECISION -->|"no"| DRAFT
     ANSWER --> RESP
     DRAFT --> RESP
+    RESP --> UI
+    UI -->|"solo tras consentimiento"| TICKET_API
+    TICKET_API --> TICKET_SVC
+    TICKET_SVC -->|"sqlite (predeterminado)"| SQLITE
+    TICKET_SVC -->|"firebase"| PY_FDC
+    PY_FDC --> NODE_BRIDGE
+    NODE_BRIDGE --> CONNECTOR
+    CONNECTOR --> CLOUDSQL
+    TICKET_SVC -->|"despues de persistir"| SMTP
     RESP -->|"HTTP API/Lambda"| U
     RESP -->|"resultado de herramienta"| HERMES
     HERMES -->|"respuesta redactada"| U
 ```
 
 La API HTTP, el handler Lambda, el servidor MCP y el chat web reutilizan la
-logica de `AgenteSoporteTI`. El chat web añade una segunda etapa de redaccion
-con Hermes/Kimi, despues del diagnostico local. No habilita herramientas del
-modelo. El servidor MCP sigue disponible para que Hermes lo invoque en sus
-propias sesiones.
+logica de `AgenteSoporteTI`. El chat web envia cada turno a Hermes/Kimi para
+redaccion despues del diagnostico local. No habilita herramientas del modelo.
+Si el diagnostico no encuentra guia, el modelo redacta la propuesta de
+escalamiento; el ticket y el aviso no se generan hasta que el usuario
+proporciona contacto y autoriza compartir el caso. El servidor MCP sigue
+disponible para que Hermes lo invoque en sus propias sesiones.
+
+## Persistencia y notificaciones de tickets
+
+`SOPORTE_TICKETS_BACKEND` selecciona `sqlite` (predeterminado) o `firebase`.
+Con Firebase, la aplicacion Python invoca un puente Node local que usa
+Firebase Admin SDK y ADC; el puente limita las operaciones a las consultas
+GraphQL declaradas en `dataconnect/example/`. El conector esta protegido para
+clientes (`NO_ACCESS`) y la app local necesita una identidad ADC autorizada.
+El conector escribe en las tablas existentes de Cloud SQL a traves de Firebase
+Data Connect; la aplicacion no crea ni migra el esquema. La persistencia cubre
+tickets, conversacion y eventos de auditoria. Los tickets SQLite no se migran
+automaticamente a Firebase.
+
+La creacion del ticket y sus mensajes/eventos iniciales es transaccional. El
+correo se envia tras guardar y contiene la conversacion y datos autorizados;
+el tecnico es destinatario y el usuario de contacto recibe copia. Un fallo de
+correo no elimina el ticket y su estado queda registrado. Los errores de ADC,
+permisos o Data Connect se muestran explicitamente; no hay fallback silencioso
+a SQLite. `GET /health` comprueba la API, pero no la disponibilidad de Firebase.
 
 Para la configuracion reproducible, consulta la
 [guia tecnica Hermes + Kimi](guia-tecnica-hermes-kimi.md) y, para el uso
@@ -92,34 +138,39 @@ cotidiano, la [guia para usuarios](guia-usuario-hermes-kimi.md).
 3. **Decision:** `buscar_conocimientos` normaliza acentos y puntuacion, compara palabras completas y ordena las guias por coincidencias.
 4. **Diagnostico:** `app/diagnostics.py` formula hipotesis y preguntas; si el usuario declara resultados de red, los interpreta como no verificados.
 5. **Respuesta conocida:** devuelve las guias, pasos, confianza heuristica y `recopilar_datos` si falta contexto.
-6. **Escalacion:** cuando no hay articulo, crea un borrador solo en memoria y devuelve `needs_approval: true` y `borrador_pendiente_aprobacion`.
-7. **Observabilidad del resultado:** HTTP expone JSON; MCP entrega los mismos campos como resultado de herramienta.
-8. **Limites:** no se ejecutan comandos, no se cambia configuracion del equipo, no se modifica una contrasena y no se crea ni envia un ticket real.
+6. **Redaccion conversacional:** en el chat web, Hermes/Kimi redacta cada respuesta a partir del diagnostico local; las herramientas estan deshabilitadas.
+7. **Escalacion consentida:** sin guia suficiente, se ofrece contactar al tecnico; solo tras capturar contacto y consentimiento se guarda y notifica el ticket.
+8. **Persistencia:** se usa SQLite o Firebase Data Connect segun la configuracion; Firebase persiste en Cloud SQL las tablas existentes de tickets, mensajes y auditoria.
+9. **Observabilidad del resultado:** HTTP expone JSON; MCP entrega los campos del diagnostico como resultado de herramienta.
+10. **Limites:** no se ejecutan comandos ni se cambia configuracion del equipo; el consentimiento autoriza compartir la incidencia, no ejecutar acciones tecnicas.
 
 ## Modos de ejecucion
 
 - **Local conversacional:** Hermes inicia `app.mcp_server` por stdio, utilizando el entorno Python configurado en Hermes. La credencial de Kimi reside en la configuracion privada de Hermes.
 - **API HTTP:** FastAPI valida `POST /agent/ask` y responde con el contrato descrito en [api-contract.md](api-contract.md).
 - **Chat web + Hermes/Kimi:** `POST /agent/chat` solo acepta loopback, calcula el diagnostico local y lanza `hermes -z` con las herramientas deshabilitadas; el historial vive en el navegador.
+- **Tickets locales:** tras el consentimiento del usuario, `POST /agent/tickets` guarda en SQLite (predeterminado) o, con `SOPORTE_TICKETS_BACKEND=firebase`, mediante Firebase Admin SDK -> Data Connect -> Cloud SQL. El correo se intenta despues de guardar y se copia al contacto.
 - **AWS SAM:** API Gateway HTTP API invoca `app.lambda_handler.handler`, que comparte los modelos Pydantic y el agente.
 
 ## Datos, seguridad y limites
 
 - `data/conocimiento_soporte.json` se versiona junto con el codigo; los articulos no se descargan de una fuente externa durante la solicitud.
-- El borrador de escalacion no se guarda ni se envia. `incident_id` permanece en `null`; un sistema de tickets requiere integracion, persistencia y aprobacion explicita.
+- No se crea un ticket al preparar la escalacion: primero se presenta una solicitud de autorizacion. Tras la confirmacion se persiste el ticket y se intenta enviar el correo.
+- Firebase es un backend opcional para la ejecucion local; requiere Node.js, ADC y permisos Data Connect. El despliegue AWS SAM no empaqueta el puente Node ni configura identidad ADC y no soporta este backend sin trabajo adicional.
+- Los datos de ticket, historial y contacto se conservan en SQLite o Cloud SQL segun el backend seleccionado. Protege el archivo local o la base cloud y recoge solo datos necesarios para gestionar el caso.
 - La API HTTP documentada no incluye autenticacion. Antes de exponerla en una red publica se deben anadir autenticacion, autorizacion, limites de uso y transporte seguro.
 - El puente del chat web tambien es solo local: requiere Hermes accesible desde WSL y el modelo/cuota configurados. La pregunta, el resultado local y el historial de la conversacion se envian al proveedor del modelo a traves de Hermes; no se envia `user_id`.
 - MCP stdio es local al entorno que ejecuta Hermes. No se debe exponer como servicio remoto sin autenticacion y transporte seguro.
 - Las claves API no pertenecen a la base de conocimiento ni al repositorio. Kimi se configura en Hermes y `.env` se mantiene local.
-- `POST /agent/ask` y el diagnostico base no consultan Kimi. En `POST /agent/chat`, Hermes/Kimi redactan la respuesta sobre el resultado local; esta ruta no delega al modelo la seleccion de fuentes ni habilita herramientas.
+- `POST /agent/ask` y el diagnostico base no consultan Kimi. En cada turno de `POST /agent/chat`, Hermes/Kimi redactan la respuesta sobre el resultado local; esta ruta no delega al modelo la seleccion de fuentes ni habilita herramientas.
 
 ## Limites y trabajo futuro
 
-La base de conocimiento y los borradores son locales y no persistentes. La
-busqueda sigue siendo por palabras clave y no comprende semanticamente
-sinonimos o intenciones. La confianza es heuristica y no calibrada. Para un uso
-productivo faltan, segun el modo de despliegue, autenticacion, autorizacion,
-persistencia/auditoria, RAG, integracion aprobada con tickets, herramientas
-remotas autorizadas y un proceso de revision de articulos. Las recomendaciones
-siguen siendo informativas y deben escalarse si no coinciden con el entorno
-institucional.
+La base de conocimiento sigue siendo local, la busqueda es por palabras clave
+y la confianza es heuristica, no calibrada. Los tickets tienen persistencia
+SQLite o Data Connect/Cloud SQL segun la configuracion, pero el panel local no
+autentica a los tecnicos. Para uso productivo siguen pendientes, segun el modo
+de despliegue, autenticacion, autorizacion de tecnicos, controles de privacidad
+y retencion, RAG, herramientas remotas autorizadas y revision de articulos.
+Las recomendaciones siguen siendo informativas y deben escalarse si no
+coinciden con el entorno institucional.
