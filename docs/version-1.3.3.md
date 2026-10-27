@@ -38,11 +38,25 @@ MFA ni secretos.
 El acceso loopback no autentica al tecnico. Usa el panel solo en un equipo
 local de confianza y no expongas la aplicacion en una red compartida.
 
+## Ampliacion de la base de conocimiento
+
+Se incorporaron guias para DNS y rutas, recuperacion de datos, aplicaciones
+ERP/CRM y politicas de grupo; correo movil, firma digital y videollamadas;
+Moodle/Canvas y proyectores; libros Excel con macros, exportaciones CSV,
+sincronizacion de nomina y diagnostico de puertos Docker/VS Code y GPU/RAM.
+
+Se adaptaron las recomendaciones para priorizar observacion, preservar datos
+y escalar cambios privilegiados. Se omitieron articulos que duplicaban guias
+existentes y se descartaron instrucciones para abrir puertos, modificar
+particiones/BIOS/registro, finalizar procesos a la fuerza o compartir datos
+sensibles.
+
 ## Verificacion
 
 Las pruebas cubren la solicitud previa de contacto, validacion de campos,
 creacion idempotente, persistencia de datos de contacto, correo SMTP simulado,
-migracion de la base previa, listado y cierre con fecha/nota.
+migracion de la base previa, listado y cierre con fecha/nota; tambien comprueban
+la clasificacion de las nuevas guias y sus limites de seguridad.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests\ -v

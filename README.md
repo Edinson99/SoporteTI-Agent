@@ -27,7 +27,11 @@ Describe el problema; SoporteTI-Agent busca una guía local, devuelve recomendac
 
 ### Temas cubiertos
 
-🌐 Conectividad e internet · 🐢 Rendimiento · 🖨️ Impresoras · ✉️ Correo · 🔐 Cuentas y MFA · 🛡️ VPN · 📦 Instalación de software · 🎧 Periféricos · 🚨 Correos sospechosos · 🪟 Errores de Windows y actualizaciones · 🔋 Batería y energía · 💾 Formateo y respaldos · 🪪 Licencias · ⌨️ Diagnóstico CMD · ⚙️ Optimización.
+🌐 Conectividad, DNS y rutas · 🐢 Rendimiento · 🖨️ Impresoras y proyectores · ✉️ Correo en PC y móvil · 🔐 Cuentas y MFA · 🛡️ VPN y phishing · 📦 Instalación de software · 🎧 Periféricos y videollamadas · 🪟 Errores de Windows, GPO y GPU · 💾 Recuperación y respaldos · 🪪 Licencias y firma digital · ⌨️ Diagnóstico CMD · 📚 Moodle y Canvas · 📊 Excel, ERP y exportaciones · 🐳 Docker, VS Code y puertos.
+
+Las guías de diagnóstico avanzado priorizan comprobaciones de solo lectura y
+escalamiento. No recomiendan desactivar controles de seguridad, modificar
+particiones o firmware, abrir equipos ni terminar procesos sin autorización.
 
 La búsqueda sigue siendo determinista por palabras completas; no es semántica ni RAG. La confianza expresa relevancia heurística de una coincidencia, no certeza de causa raíz.
 

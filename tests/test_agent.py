@@ -89,12 +89,40 @@ def test_base_conocimiento_incluye_guias_ti_frecuentes():
         "Mi licencia de software expirada": "kb_licencias_activacion_001",
         "Que hace ipconfig en CMD": "kb_cmd_diagnostico_001",
         "Quiero optimizar rendimiento": "kb_optimizacion_equipo_001",
+        "No resuelve DNS corporativo": "kb_l2_red_enrutamiento_dns_001",
+        "El disco hace clic y no puedo recuperar archivos": "kb_l2_recuperacion_datos_001",
+        "Error SAP GUI al conectarme al ERP": "kb_l2_software_especializado_erp_001",
+        "La GPO no aplica en mi equipo": "kb_l2_politicas_gpo_permisos_001",
+        "Outlook no funciona en el celular": "kb_corp_correo_movil_001",
+        "Error al firmar PDF con certificado digital": "kb_corp_firma_digital_pdf_001",
+        "No puedo compartir pantalla en Teams": "kb_corp_teams_zoom_audio_pantalla_001",
+        "Moodle no sube la tarea": "kb_acad_moodle_canvas_archivo_001",
+        "El proyector HDMI del aula no da imagen": "kb_acad_proyector_hdmi_aula_001",
+        "Excel se congela con macro en xlsm": "kb_fin_excel_macro_xlsm_congelado_001",
+        "Error al exportar CSV del ERP": "kb_fin_exportar_reporte_erp_csv_001",
+        "Error de sincronizacion de nomina": "kb_fin_sincronizacion_nomina_001",
+        "Docker dice port is already allocated": "kb_tech_docker_vscode_puertos_001",
+        "La tarjeta grafica no aparece": "kb_tech_gpu_ram_diagnostico_001",
     }
 
     for pregunta, articulo_esperado in casos.items():
         articulo = buscar_conocimiento(pregunta)
         assert articulo is not None, pregunta
         assert articulo["id"] == articulo_esperado
+
+
+def test_guias_nuevas_evitan_cambios_de_alto_impacto():
+    articulos = {
+        articulo["id"]: articulo
+        for articulo in cargar_base_conocimiento()
+    }
+
+    assert any("no cambies rutas ni DNS" in paso for paso in articulos["kb_l2_red_enrutamiento_dns_001"]["pasos"])
+    assert any("No ejecutes herramientas de reparacion" in paso for paso in articulos["kb_l2_recuperacion_datos_001"]["pasos"])
+    assert any("no cambies el registro" in paso.casefold() for paso in articulos["kb_l2_politicas_gpo_permisos_001"]["pasos"])
+    assert any("unicamente si tu mismo" in paso for paso in articulos["kb_corp_correo_movil_001"]["pasos"])
+    assert any("No detengas procesos" in paso for paso in articulos["kb_tech_docker_vscode_puertos_001"]["pasos"])
+    assert any("no actualices BIOS/UEFI" in paso for paso in articulos["kb_tech_gpu_ram_diagnostico_001"]["pasos"])
 
 
 def test_guias_de_formateo_y_cmd_indican_limites_seguros():

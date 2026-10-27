@@ -170,6 +170,160 @@
         "Desactiva del inicio automatico solo aplicaciones personales conocidas que no sean necesarias; no cambies herramientas de seguridad o administracion.",
         "Evita limpiadores, optimizadores, cambios en el registro y desactivar antivirus; si la lentitud persiste, informa al soporte el modelo, sistema operativo y cuando empezo."
       ]
+    },
+    {
+      "id": "kb_l2_red_enrutamiento_dns_001",
+      "palabras_clave": ["error dns corporativo", "no resuelve dns", "resolucion de nombres", "ruta de red", "tracert", "nslookup"],
+      "pasos": [
+        "Confirma si falla un solo sitio o servicio, o si ocurre con varios nombres; anota el mensaje y la hora aproximada.",
+        "Si el soporte lo autoriza, usa nslookup para consultar el nombre afectado y comparar el resultado con otro equipo de la misma red.",
+        "route print permite consultar la tabla de rutas local y tracert muestra los saltos hacia un destino; no cambies rutas ni DNS por tu cuenta.",
+        "Comparte los resultados solo por el canal institucional aprobado y oculta nombres internos, direcciones IP y otros datos de red que no sean necesarios.",
+        "Si varios equipos o servicios estan afectados, escala al equipo de redes con el alcance, los resultados y el horario del incidente."
+      ]
+    },
+    {
+      "id": "kb_l2_recuperacion_datos_001",
+      "palabras_clave": ["disco hace clic", "disco danado", "archivos borrados", "recuperar archivos borrados", "perdi informacion", "error de disco"],
+      "pasos": [
+        "Si el disco emite chasquidos, desaparece repetidamente o muestra errores de lectura, deja de guardar archivos y solicita ayuda tecnica cuanto antes.",
+        "No ejecutes herramientas de reparacion, formateo, desfragmentacion ni escaneos de recuperacion; pueden reducir las posibilidades de recuperar los datos.",
+        "Para archivos borrados en OneDrive, SharePoint o una unidad de red, revisa la papelera y el historial de versiones desde el portal institucional oficial, si tienes permiso.",
+        "Solicita al soporte la evaluacion del disco y el procedimiento autorizado de recuperacion; no abras el equipo ni extraigas componentes.",
+        "No compartas claves de recuperacion de BitLocker, contrasenas ni archivos con datos personales en el chat o en canales no autorizados."
+      ]
+    },
+    {
+      "id": "kb_l2_software_especializado_erp_001",
+      "palabras_clave": ["error sap gui", "falla erp", "error crm", "error odbc", "aplicacion empresarial no conecta"],
+      "pasos": [
+        "Anota el nombre de la aplicacion, el mensaje exacto, la hora y si el problema afecta a otros usuarios.",
+        "Comprueba si puedes acceder a otras aplicaciones corporativas y si el error aparece al iniciar sesion, abrir una funcion o guardar datos.",
+        "No cambies controladores ODBC, archivos de configuracion, reglas de firewall ni componentes del sistema sin autorizacion del equipo de aplicaciones.",
+        "Si el error menciona una base de datos o conectividad, reportalo al soporte de la aplicacion por el canal institucional; no incluyas contrasenas ni datos de clientes.",
+        "Adjunta una captura solo si esta permitida y despues de ocultar datos personales, financieros o comerciales."
+      ]
+    },
+    {
+      "id": "kb_l2_politicas_gpo_permisos_001",
+      "palabras_clave": ["gpo no aplica", "error de politica de grupo", "permiso denegado corporativo", "directiva bloquea aplicacion", "restriccion de seguridad"],
+      "pasos": [
+        "Anota la accion que intentabas realizar, el mensaje de acceso denegado, la aplicacion y la hora.",
+        "Comprueba si el problema ocurre con una sola cuenta o equipo y si el acceso habia funcionado anteriormente.",
+        "No cambies el registro ni intentes eludir la directiva, desactivar UAC o antivirus, ni ejecutar comandos de actualizacion de politicas como administrador.",
+        "Solicita al soporte que revise las politicas y permisos asignados a tu cuenta y equipo mediante el proceso autorizado.",
+        "No adjuntes reportes que contengan nombres de usuario, grupos o rutas internas salvo que el canal de soporte aprobado lo requiera."
+      ]
+    },
+    {
+      "id": "kb_corp_correo_movil_001",
+      "palabras_clave": ["correo en el celular", "outlook en el celular", "outlook no funciona en el celular", "outlook movil", "correo movil corporativo", "company portal correo"],
+      "pasos": [
+        "Confirma que el dispositivo tenga conexion y que la fecha y hora esten configuradas automaticamente.",
+        "Usa la aplicacion oficial aprobada por tu organizacion y consulta al soporte si el dispositivo debe registrarse en el portal corporativo.",
+        "Revisa si la aplicacion muestra un requisito de actualizacion o cumplimiento; no elimines perfiles de administracion ni desactives controles de seguridad.",
+        "Aprueba una solicitud MFA unicamente si tu mismo acabas de iniciar ese acceso; rechaza las solicitudes inesperadas y reportalas al canal de seguridad.",
+        "Si persiste, informa el modelo del dispositivo, la aplicacion, el mensaje y la hora; nunca envies contrasenas ni codigos MFA."
+      ]
+    },
+    {
+      "id": "kb_corp_firma_digital_pdf_001",
+      "palabras_clave": ["error al firmar pdf", "firma digital pdf", "certificado digital pdf", "token criptografico pdf", "firma electronica no funciona"],
+      "pasos": [
+        "Anota el nombre de la aplicacion, el mensaje de error y si el certificado aparece vencido en la interfaz oficial del proveedor.",
+        "Comprueba que el lector de PDF y el software oficial del token esten actualizados desde las fuentes aprobadas por tu organizacion.",
+        "No exportes certificados, claves privadas ni PIN; tampoco compartas el token o permitas que otra persona firme en tu nombre.",
+        "No instales certificados raiz ni cambies almacenes de certificados por tu cuenta; solicita ayuda al administrador autorizado.",
+        "Si el documento tiene restricciones o el certificado esta vencido, contacta al emisor del documento o al soporte de firma digital."
+      ]
+    },
+    {
+      "id": "kb_corp_teams_zoom_audio_pantalla_001",
+      "palabras_clave": ["microfono teams", "audio zoom", "no puedo compartir pantalla en teams", "no puedo compartir pantalla en zoom", "videollamada sin audio"],
+      "pasos": [
+        "En la configuracion de audio de la reunion, selecciona el microfono y los altavoces que realmente estas usando.",
+        "Comprueba que el microfono no este silenciado en la aplicacion ni mediante un boton fisico de los auriculares.",
+        "Si necesitas compartir pantalla, habilita el permiso solo para la aplicacion oficial y durante el uso; no concedas acceso a aplicaciones desconocidas.",
+        "Cierra y vuelve a abrir la aplicacion si el cambio de dispositivo no se refleja, y verifica si el problema ocurre en otra reunion autorizada.",
+        "Si persiste, informa la aplicacion, el dispositivo y si el fallo afecta al audio, video o pantalla compartida; no grabes ni compartas reuniones sin permiso."
+      ]
+    },
+    {
+      "id": "kb_acad_moodle_canvas_archivo_001",
+      "palabras_clave": ["moodle no sube archivo", "moodle no sube la tarea", "canvas no sube tarea", "error al entregar tarea", "limite de archivo moodle", "plataforma academica archivo"],
+      "pasos": [
+        "Comprueba el tamano y el formato permitidos en la actividad y confirma que la entrega siga abierta.",
+        "Verifica que el archivo termine de guardarse en tu dispositivo y prueba una conexion estable antes de repetir la carga.",
+        "Si la plataforma ofrece un error, guarda el texto y la hora; no publiques el trabajo ni un enlace con acceso abierto.",
+        "Usa almacenamiento institucional solo si el docente permite entregar un enlace y limita el acceso a las personas autorizadas.",
+        "Si la fecha limite esta proxima, informa al docente por el canal oficial y contacta al soporte con el nombre de la plataforma y el error."
+      ]
+    },
+    {
+      "id": "kb_acad_proyector_hdmi_aula_001",
+      "palabras_clave": ["proyector hdmi no da imagen", "proyector hdmi del aula no da imagen", "pantalla de aula sin senal", "proyector no detecta laptop", "video beam no funciona"],
+      "pasos": [
+        "Comprueba que el proyector este encendido y que la entrada seleccionada coincida con el cable conectado.",
+        "Asegura el cable HDMI en ambos extremos y prueba la opcion Duplicar con Windows + P si usas Windows.",
+        "Si hay una estacion o adaptador del aula, verifica que este encendido y conectado; no fuerces conectores ni ajustes del equipo.",
+        "Prueba otro cable disponible y aprobado o una entrada alternativa sin desconectar equipos de terceros.",
+        "Si no hay imagen, registra el aula, el equipo y cualquier mensaje, y solicita apoyo audiovisual."
+      ]
+    },
+    {
+      "id": "kb_fin_excel_macro_xlsm_congelado_001",
+      "palabras_clave": ["excel se congela con macro", "xlsm no responde", "excel macro lento", "libro excel pesado", "macro de excel bloqueada"],
+      "pasos": [
+        "Si el archivo proviene de una fuente no confiable, no habilites macros ni lo abras; reportalo al equipo de seguridad.",
+        "Para un archivo institucional conocido, guarda una copia de trabajo en la ubicacion aprobada y anota la version de Excel y el mensaje.",
+        "Cierra otras aplicaciones que reconozcas y espera a que Excel termine calculos o guardados antes de forzar el cierre.",
+        "No cambies las politicas de macros, calculo global o configuraciones de seguridad para intentar resolver el problema.",
+        "Si solo falla ese libro, solicita al propietario o al soporte de aplicaciones que revise las macros y el tamano del archivo; comparte una copia solo con autorizacion."
+      ]
+    },
+    {
+      "id": "kb_fin_exportar_reporte_erp_csv_001",
+      "palabras_clave": ["error exportar csv del erp", "error al exportar csv del erp", "reporte erp no descarga", "csv sale desordenado", "error exportacion reporte", "columnas csv mezcladas"],
+      "pasos": [
+        "Anota el nombre del reporte, el periodo consultado, la hora y el mensaje; evita incluir datos personales o financieros en la evidencia.",
+        "Si el reporte es muy amplio, consulta con el responsable del sistema si puedes dividir el periodo antes de volver a intentarlo.",
+        "Abre el CSV solo con las herramientas aprobadas y confirma la codificacion y el delimitador sin sobrescribir el archivo original.",
+        "No cambies permisos, roles ni configuraciones del ERP para habilitar una exportacion.",
+        "Si el fallo se repite, escala al soporte del ERP con el identificador del reporte y evidencia redactada."
+      ]
+    },
+    {
+      "id": "kb_fin_sincronizacion_nomina_001",
+      "palabras_clave": ["error sincronizacion nomina", "error de sincronizacion de nomina", "descuadre de nomina", "asientos de nomina no cargan", "error contable de nomina", "lote de nomina rechazado"],
+      "pasos": [
+        "No repitas manualmente una carga ni alteres registros contables para corregir un descuadre; podria duplicar o cambiar transacciones.",
+        "Anota el periodo, la hora, el sistema y el identificador del lote si esta disponible.",
+        "Reporta el caso al responsable autorizado de nomina o soporte funcional mediante el canal restringido.",
+        "No incluyas nombres, documentos de identidad, cuentas bancarias, salarios ni archivos completos de nomina en el chat o correo general.",
+        "Si es necesario adjuntar evidencia, elimina los datos personales y sigue el procedimiento de manejo seguro de informacion de la organizacion."
+      ]
+    },
+    {
+      "id": "kb_tech_docker_vscode_puertos_001",
+      "palabras_clave": ["puerto ocupado vscode", "docker port is already allocated", "docker dice port is already allocated", "conflicto de puerto docker", "wsl2 puerto en uso", "bind address already in use"],
+      "pasos": [
+        "Anota el puerto y el mensaje completo. No detengas procesos o contenedores hasta identificar su propietario.",
+        "Si tienes autorizacion y sabes interpretar el resultado, netstat -ano puede mostrar conexiones y PID; no publiques la salida porque puede revelar puertos y direcciones internas.",
+        "Comprueba en VS Code o Docker Desktop si existe una instancia previa del proyecto que puedas cerrar desde su propia interfaz.",
+        "No uses taskkill, no detengas contenedores ajenos ni reinicies WSL o servicios compartidos sin aprobacion.",
+        "Si el puerto pertenece a otro servicio, consulta al responsable o configura un puerto alternativo en tu proyecto conforme a las reglas locales."
+      ]
+    },
+    {
+      "id": "kb_tech_gpu_ram_diagnostico_001",
+      "palabras_clave": ["tarjeta grafica no aparece", "gpu no detectada", "memoria ram no reconocida", "pantalla negra hardware nuevo", "error de memoria gpu"],
+      "pasos": [
+        "Anota el modelo del equipo, el componente instalado recientemente, el sistema operativo y cualquier codigo de error.",
+        "Comprueba en la configuracion del sistema o el Administrador de dispositivos si el componente aparece y si muestra un aviso.",
+        "Verifica externamente que el cable de pantalla este conectado al puerto previsto y que el monitor use la entrada correcta; no abras el equipo.",
+        "No retires memoria o tarjeta grafica, no actualices BIOS/UEFI y no uses limpiadores de controladores sin la intervencion del soporte autorizado.",
+        "Solicita al soporte revisar compatibilidad, alimentacion y controladores oficiales antes de realizar cambios."
+      ]
     }
   ]
 }
