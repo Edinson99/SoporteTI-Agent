@@ -1,6 +1,7 @@
 .aws-sam/
 
 # Dependencias
+node_modules/
 __pycache__/
 *.py[cod]
 *.pyo

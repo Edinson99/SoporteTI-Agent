@@ -1,0 +1,13 @@
+specVersion: "v1"
+serviceId: "soporteit-tickets-service"
+location: "us-east4"
+schemas:
+  - source: "./schema"
+    datasource:
+      postgresql:
+        database: "soporteit-tickets-database"
+        cloudSql:
+          instanceId: "soporteit-tickets-instance"
+          # schemaValidation: "STRICT"     # STRICT mode makes Postgres schema match Data Connect exactly.
+          # schemaValidation: "COMPATIBLE" # COMPATIBLE mode makes Postgres schema compatible with Data Connect.
+connectorDirs: ["./example"]

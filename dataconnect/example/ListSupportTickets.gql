@@ -1,0 +1,32 @@
+query ListSupportTickets @auth(level: NO_ACCESS) {
+  tickets {
+    id
+    requestId
+    contactName
+    contactEmail
+    contactPhone
+    queryText
+    contextJson
+    category
+    priority
+    status
+    resolutionNote
+    emailSentStatus
+    createdAt
+    updatedAt
+    ticketMessages_on_ticket {
+      id
+      senderType
+      content
+      timestamp
+    }
+    ticketAuditEvents_on_ticket {
+      id
+      eventType
+      performedBy
+      previousValue
+      newValue
+      timestamp
+    }
+  }
+}

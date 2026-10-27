@@ -1,6 +1,6 @@
 # API Contract
 
-Contrato de API de SoporteTI-Agent v1.3.3.
+Contrato de API de SoporteTI-Agent v1.3.4.
 
 ## `GET /health`
 
@@ -70,7 +70,7 @@ Contrato de API de SoporteTI-Agent v1.3.3.
 - `ticket_email_status`: estado del correo después de confirmar el ticket.
 - `ticket_request_id`: identificador temporal para que un reintento de confirmación no cree tickets duplicados.
 - `contact_required`: indica que no se encontró guía y el chat debe solicitar nombre, correo y teléfono.
-- `chat_model_status`: `not_used_escalation` cuando no se requiere Hermes/Kimi para presentar el formulario; `used` para respuestas de consultas con guía.
+- `chat_model_status`: `used` en cada turno de `/agent/chat`, incluso si no se encuentra guía; `null` en el endpoint determinista `/agent/ask`.
 - `category` y `priority`: clasificación heurística del caso.
 - `diagnosis`: resumen, hipótesis ordenadas y pruebas sugeridas; no afirma una causa confirmada.
 - `evidence`: palabras coincidentes y resultados de diagnóstico que el usuario haya reportado.
@@ -125,8 +125,9 @@ y acepta opcionalmente hasta diez mensajes previos:
 ```
 
 El servidor calcula primero el diagnóstico determinista con la base local y
-después invoca `hermes -z` en WSL para que el modelo configurado en Hermes
-redacte `answer`. La respuesta conserva el resto del contrato de
+después invoca `hermes -z` en WSL en cada turno para que el modelo configurado
+en Hermes (Kimi en la configuración recomendada) redacte `answer`, también
+cuando no hay una guía. La respuesta conserva el resto del contrato de
 `AgentAskResponse` para que la interfaz muestre hipótesis, evidencia y pasos
 recomendados. Se envían al modelo la pregunta, el resultado local y el
 historial; `user_id` no se incluye en el prompt. La API key permanece en Hermes.
@@ -134,24 +135,62 @@ Si Hermes/Kimi falla, devuelve `503`; no se presenta la respuesta local como si
 fuera una respuesta del modelo.
 
 Esta ruta de chat no invoca herramientas Hermes/MCP: las herramientas están
-deshabilitadas en el modo de una sola consulta. Si no encuentra guía, devuelve
-el diagnóstico local y un formulario requerido, sin invocar Hermes ni crear un
-ticket. Para consultas con guía, Kimi redacta la respuesta y los errores de
-Hermes se devuelven explícitamente.
+deshabilitadas en el modo de una sola consulta. Si no encuentra guía, Hermes y
+el modelo configurado redactan la respuesta de escalación y la interfaz
+pregunta si se desea contactar al técnico. Todavía no crea ni envía el ticket.
+Para consultas con guía, el modelo redacta la respuesta; los errores de Hermes
+se devuelven explícitamente.
 
 ### Tickets y notificaciones locales
 
-El chat muestra campos obligatorios de nombre, correo y teléfono si no se
-encuentra guía. Solo tras enviarlos llama `POST /agent/tickets`; así no se
-guarda ni se envía el ticket antes de que el usuario facilite esos datos. La
-conversación incluye el historial previo, la consulta y el mensaje de
-escalamiento local. El correo también incluye los datos de contacto.
+El chat muestra campos obligatorios de nombre, correo, teléfono y autorización
+explícita si no encuentra guía suficiente. Solo tras aceptar la autorización
+y enviar el formulario llama `POST /agent/tickets`; así no se guarda ni se
+envía el ticket antes de que el usuario lo autorice. El correo dirigido al
+técnico incluye al usuario en copia (`Cc`). La conversación incluye el
+historial previo, la consulta y la respuesta del asistente.
 
 El endpoint es de loopback y rechaza consultas que ya tengan guía. `request_id`
-hace idempotente la confirmación y evita tickets duplicados en reintentos. Los
-tickets se guardan en `data/tickets.sqlite3` (o en `SOPORTE_TICKETS_DB`). Si el
-correo no está configurado o falla, el ticket permanece guardado y la
-respuesta devuelve su estado.
+hace idempotente la confirmación y evita tickets duplicados en reintentos. Por
+defecto, los tickets se guardan en `data/tickets.sqlite3` (o en
+`SOPORTE_TICKETS_DB`). Si el correo no está configurado o falla, el ticket
+permanece guardado y la respuesta devuelve su estado.
+
+#### Backend opcional Firebase Data Connect
+
+Se puede seleccionar el backend con `SOPORTE_TICKETS_BACKEND=firebase`. Los
+valores permitidos son `sqlite` (predeterminado) y `firebase`; un valor
+desconocido impide iniciar la aplicación. La configuración de Firebase usa:
+
+- `FIREBASE_PROJECT_ID`: proyecto, predeterminado `soporteit-tickets`.
+- `DATA_CONNECT_SERVICE_ID`: servicio, predeterminado
+  `soporteit-tickets-service`.
+- `DATA_CONNECT_LOCATION`: ubicación, predeterminada `us-east4`.
+- `NODE_BIN`: opcional, ruta completa a `node.exe` si Node no está en `PATH`.
+
+El backend ejecuta las operaciones GraphQL del conector `support` mediante
+Firebase Admin SDK y Application Default Credentials (ADC). `firebase login`
+no configura ADC para el proceso de Python/Node. En desarrollo local inicia
+sesión con Google Cloud CLI mediante `gcloud auth application-default login`;
+en servidor usa identidad de workload y otorga solo los permisos necesarios
+para invocar Data Connect. No almacenes claves de servicio en el repositorio.
+Las operaciones usan acceso `NO_ACCESS` para clientes finales; el puente
+privilegiado solo acepta operaciones incluidas en una lista cerrada.
+
+Los tickets, mensajes, eventos de auditoría y parte del contexto se guardan en
+las tablas existentes de Cloud SQL por medio de Data Connect. La operación de
+creación del ticket y sus mensajes/eventos es transaccional. El correo se
+intenta después de guardar y su resultado se persiste; un reintento con el
+mismo `request_id` devuelve el ticket existente y no duplica el envío. El
+número es `STI-AAAAMMDD-<UUID>` para Firebase y `STI-AAAAMMDD-######` para
+SQLite. No se ejecutan migraciones ni se importan tickets SQLite al activar
+Firebase.
+
+Si Data Connect, ADC, Node.js o sus permisos no están disponibles, los
+endpoints de tickets devuelven `503` explícito; no se cambia silenciosamente a
+SQLite. `GET /health` solo comprueba la API y no valida Firebase. La plantilla
+AWS SAM no empaqueta el puente Node ni configura identidad de workload; no
+uses el backend Firebase desde ese despliegue sin preparar y proteger ambos.
 
 ### `POST /agent/tickets`
 
@@ -168,6 +207,7 @@ sigue sin encontrar una guía. Requiere loopback.
     {"role": "assistant", "content": "¿Afecta a otros equipos?"}
   ],
   "request_id": "a762137a-4b3b-4fa2-9644-31a5ad019ff4",
+  "consent_to_email": true,
   "contact": {
     "name": "Nombre del usuario",
     "email": "usuario@example.com",
@@ -177,8 +217,10 @@ sigue sin encontrar una guía. Requiere loopback.
 }
 ```
 
-`request_id` es un UUID; `contact.name`, `contact.email` y `contact.phone`
-son obligatorios y validados. `history` admite hasta diez mensajes. Respuesta
+`request_id` es un UUID; `consent_to_email` debe ser `true` para autorizar la
+creación del ticket y el envío del correo al técnico con copia al usuario.
+`contact.name`, `contact.email` y `contact.phone` son obligatorios y validados.
+`history` admite hasta diez mensajes. Respuesta
 `201`:
 
 ```json
@@ -191,7 +233,7 @@ son obligatorios y validados. `history` admite hasta diez mensajes. Respuesta
 
 Los posibles valores de `email_status` son `pending`, `sent`, `failed` y
 `not_configured`. `409` indica que existe una guía y no se creó el ticket;
-`403` indica que la solicitud no procede de loopback; los errores de
+`403` indica que la solicitud no procede de loopback o no incluye consentimiento; los errores de
 validación usan `422`.
 
 ## Seguimiento de tickets

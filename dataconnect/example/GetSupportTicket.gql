@@ -1,0 +1,32 @@
+query GetSupportTicket($id: UUID!) @auth(level: NO_ACCESS) {
+  ticket(key: {id: $id}) {
+    id
+    requestId
+    contactName
+    contactEmail
+    contactPhone
+    queryText
+    contextJson
+    category
+    priority
+    status
+    resolutionNote
+    emailSentStatus
+    createdAt
+    updatedAt
+    ticketMessages_on_ticket {
+      id
+      senderType
+      content
+      timestamp
+    }
+    ticketAuditEvents_on_ticket {
+      id
+      eventType
+      performedBy
+      previousValue
+      newValue
+      timestamp
+    }
+  }
+}

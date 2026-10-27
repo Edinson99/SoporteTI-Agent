@@ -2,9 +2,11 @@
 
 **Un asistente de soporte TI que convierte incidencias comunes en pasos claros y seguros.**
 
-**Version 1.3.3:** solicita nombre y datos de contacto antes de crear y enviar
-un ticket sin guia; incluye un panel local para seguirlo y marcarlo resuelto.
-Consulta las [notas 1.3.3](docs/version-1.3.3.md), las
+**Version 1.3.4:** Hermes y el modelo configurado (Kimi, si así está
+seleccionado) participan en cada turno del chat; el usuario autoriza la
+escalación antes del correo y recibe una copia.
+Consulta las [notas 1.3.4](docs/version-1.3.4.md), las
+[notas 1.3.3](docs/version-1.3.3.md), las
 [notas 1.3.2](docs/version-1.3.2.md), las
 [notas 1.3.1](docs/version-1.3.1.md) y las
 [notas 1.3.0](docs/version-1.3.md).
@@ -110,13 +112,63 @@ error explícito en lugar de fingir una respuesta de Kimi. El endpoint
 determinista `POST /agent/ask` sigue disponible para clientes que no requieren
 el modelo.
 
-Cuando no hay una guia de conocimiento, el chat solicita nombre, correo y
-telefono de contacto. Solo al enviar el formulario se guarda un ticket local
-con numero `STI-AAAAMMDD-######` y se intenta notificar al tecnico por correo.
-El seguimiento esta en
+Cuando no hay una guia suficiente, Hermes consulta al modelo configurado para
+redactar la respuesta y el chat pregunta si se desea contactar al técnico.
+Solo tras marcar la autorización y enviar nombre, correo y teléfono se guarda
+un ticket y se intenta notificarlo; el correo incluye al usuario en copia. En
+SQLite el numero tiene formato
+`STI-AAAAMMDD-######`; en Firebase, `STI-AAAAMMDD-<UUID>`. El seguimiento esta en
 `http://127.0.0.1:8000/tickets`; alli se puede anotar la solucion y marcar el
 caso resuelto. Configura Gmail SMTP en `.env` con una contrasena de aplicacion.
-Consulta [las notas 1.3.3](docs/version-1.3.3.md).
+Consulta [las notas 1.3.4](docs/version-1.3.4.md).
+
+### Persistencia Firebase Data Connect (opcional)
+
+SQLite sigue siendo el backend predeterminado. Para guardar tickets en la
+instancia Data Connect ya configurada, instala Node.js LTS, instala las
+dependencias del puente y la CLI de Firebase, e inicia ADC con Google Cloud
+CLI. En Windows usa los comandos `.cmd` para evitar la política que bloquea
+`npm.ps1`:
+
+```powershell
+npm.cmd ci
+npm.cmd install -g firebase-tools
+firebase.cmd login
+gcloud auth application-default login
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+En `.env`, configura `SOPORTE_TICKETS_BACKEND=firebase`,
+`FIREBASE_PROJECT_ID=soporteit-tickets`,
+`DATA_CONNECT_SERVICE_ID=soporteit-tickets-service` y
+`DATA_CONNECT_LOCATION=us-east4`. Puedes omitir estos tres últimos valores
+porque coinciden con los valores predeterminados del conector. Si Node.js no
+está en `PATH`, configura `NODE_BIN` con la ruta completa a `node.exe`.
+La identidad ADC debe tener permisos para invocar Data Connect en el proyecto;
+`firebase login` por sí solo autentica la CLI, no el proceso de la aplicación.
+No descargues ni guardes claves de cuentas de servicio en el repositorio.
+
+Valida las operaciones y el conector local antes de iniciar la app:
+
+```powershell
+npm.cmd run dataconnect:compile
+.\.venv\Scripts\python.exe -m pytest tests\test_dataconnect_tickets.py tests\test_tickets.py -v
+.\scripts\start.ps1
+```
+
+El backend Firebase persiste tickets, mensajes de conversación y auditoría en
+las tablas existentes de Cloud SQL a través de Data Connect. No ejecuta
+migraciones SQL ni importa tickets SQLite. La creación del ticket y sus
+mensajes/auditoría es transaccional; el correo se envía después de guardar y su
+estado queda registrado. El número de ticket Firebase es determinista a partir
+del UUID de solicitud para que un reintento no cree otro ticket.
+
+La aplicación local ejecuta un puente Node con Firebase Admin SDK y ADC. Este
+backend está pensado para un equipo o servidor de confianza; el panel solo
+comprueba loopback y no autentica técnicos. No cambies el backend a Firebase
+en un despliegue Lambda/SAM: esa plantilla no empaqueta el puente Node ni
+configura su identidad de workload. El endpoint `/health` comprueba la API,
+no la disponibilidad de Firebase.
 
 ## 🔗 Formas de integración y despliegue
 
@@ -150,9 +202,9 @@ La API, Lambda, MCP y el chat web comparten la misma lógica determinista de dia
 ## 🔒 Límites y seguridad
 
 - El agente **recomienda**, pero no ejecuta comandos ni modifica el equipo; los resultados de `network_checks` no se verifican desde el servidor.
-- No instala software ni cambia contraseñas. Los tickets solo se crean cuando no hay guía y se guardan localmente en SQLite; no se envían a una mesa de servicio externa.
+- No instala software ni cambia contraseñas. Los tickets solo se crean cuando no hay guía y se guardan en SQLite (predeterminado) o, si se configura, en Firebase Data Connect; no se envían a una mesa de servicio externa.
 - El correo requiere una contraseña de aplicación Gmail en el `.env` local. El secreto nunca se almacena en la base de tickets ni debe incluirse en el repositorio.
-- El ticket conserva la conversacion y el texto de la consulta en SQLite local; protege el archivo y no incluyas credenciales ni datos confidenciales en el chat.
+- El ticket conserva la conversación, el texto de la consulta y los datos de contacto en el backend seleccionado. Protege la base SQLite o el proyecto Firebase y no incluyas credenciales ni datos confidenciales en el chat.
 - El panel de seguimiento contiene datos personales y solo está protegido por acceso loopback; úsalo únicamente en un equipo local de confianza. No ofrece autenticación de técnicos.
 - La base de conocimiento está versionada localmente; el backend no consulta Kimi ni servicios externos para diagnosticar.
 - El chat web envía la pregunta, el resultado local de diagnóstico y hasta diez turnos previos al modelo configurado en Hermes. El historial vive solo en la memoria de la página y se pierde al recargar.

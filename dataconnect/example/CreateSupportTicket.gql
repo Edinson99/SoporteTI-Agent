@@ -1,0 +1,12 @@
+mutation CreateSupportTicket(
+  $ticket: Ticket_Data!
+    @allow(fields: "id requestId contactName contactEmail contactPhone queryText contextJson category priority status resolutionNote emailSentStatus createdAt updatedAt")
+  $messages: [TicketMessage_Data!]!
+    @allow(fields: "id ticketId senderType content")
+  $events: [TicketAuditEvent_Data!]!
+    @allow(fields: "id ticketId eventType performedBy previousValue newValue")
+) @auth(level: NO_ACCESS) @transaction {
+  ticket_insert(data: $ticket)
+  ticketMessage_insertMany(data: $messages)
+  ticketAuditEvent_insertMany(data: $events)
+}

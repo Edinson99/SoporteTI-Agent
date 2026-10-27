@@ -1,0 +1,16 @@
+mutation ResolveSupportTicket(
+  $id: UUID!
+  $resolutionNote: String
+  $event: TicketAuditEvent_Data!
+    @allow(fields: "id ticketId eventType performedBy previousValue newValue")
+) @auth(level: NO_ACCESS) @transaction {
+  ticket_update(
+    key: {id: $id}
+    data: {
+      status: "resolved"
+      resolutionNote: $resolutionNote
+      updatedAt_expr: "request.time"
+    }
+  )
+  ticketAuditEvent_insert(data: $event)
+}

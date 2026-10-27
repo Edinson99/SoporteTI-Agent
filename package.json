@@ -1,0 +1,12 @@
+{
+  "name": "soporteti-agent-dataconnect-bridge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dataconnect:compile": "firebase dataconnect:compile --project soporteit-tickets",
+    "dataconnect:deploy-connector": "firebase deploy --only dataconnect:soporteit-tickets-service:support --project soporteit-tickets"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}

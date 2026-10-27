@@ -100,6 +100,8 @@
     .contact-field input { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; }
     .contact-form button { justify-self: start; padding: 9px 13px; border: 0; border-radius: 9px; background: var(--blue); color: white; font-size: 12px; font-weight: 700; }
     .contact-form button:disabled { cursor: wait; opacity: .7; }
+    .contact-consent { display: flex; align-items: flex-start; gap: 8px; color: #42536b; font-size: 12px; line-height: 1.5; }
+    .contact-consent input { margin-top: 2px; }
     .ticket-submit-status { color: #42536b !important; }
     .steps { margin: 9px 0 0; padding-left: 21px; }
     .steps li { padding: 3px 0 3px 3px; }
@@ -463,10 +465,7 @@
 
       const meta = document.createElement("div");
       meta.className = "meta";
-      const modelStatus = data.chat_model_status === "not_used_escalation"
-        ? " · Para escalar no se requiere Hermes/Kimi"
-        : "";
-      meta.textContent = `${data.needs_approval ? "Requiere revisión humana" : "Guía: " + (data.sources.join(", ") || "soporte TI")} · Prioridad ${data.priority} · ${data.next_action.replaceAll("_", " ")}${modelStatus}`;
+      meta.textContent = `${data.needs_approval ? "Requiere revisión humana" : "Guía: " + (data.sources.join(", ") || "soporte TI")} · Prioridad ${data.priority} · ${data.next_action.replaceAll("_", " ")}`;
       content.append(meta);
       if (data.contact_required && data.ticket_request_id) {
         const contactForm = document.createElement("form");
@@ -474,7 +473,7 @@
         const title = document.createElement("h3");
         title.textContent = "Antes de enviar el caso al técnico";
         const privacy = document.createElement("p");
-        privacy.textContent = "Completa tus datos de contacto. Se compartirán con el técnico y se guardarán junto con el ticket local.";
+        privacy.textContent = "No encontramos una guía suficiente con la información disponible. ¿Quieres contactar al técnico para continuar? Recibirá la descripción, la conversación y tus datos de contacto. No se enviará nada hasta que confirmes abajo.";
         contactForm.append(title, privacy);
 
         const fieldGrid = document.createElement("div");
@@ -501,11 +500,19 @@
         });
         const submit = document.createElement("button");
         submit.type = "submit";
-        submit.textContent = "Crear ticket y avisar al técnico";
+        submit.textContent = "Confirmar y enviar al técnico";
+        const consentLabel = document.createElement("label");
+        consentLabel.className = "contact-consent";
+        const consent = document.createElement("input");
+        consent.type = "checkbox";
+        consent.required = true;
+        const consentText = document.createElement("span");
+        consentText.textContent = "Sí, autorizo crear el ticket y compartir con el técnico mi descripción, conversación y datos de contacto. Recibiré una copia del correo.";
+        consentLabel.append(consent, consentText);
         const status = document.createElement("p");
         status.className = "ticket-submit-status";
         status.setAttribute("role", "status");
-        contactForm.append(fieldGrid, submit, status);
+        contactForm.append(fieldGrid, consentLabel, submit, status);
         content.append(contactForm);
 
         contactForm.addEventListener("submit", async (event) => {
@@ -520,6 +527,7 @@
                 ...pendingTicket,
                 request_id: data.ticket_request_id,
                 assistant_response: data.answer,
+                consent_to_email: consent.checked,
                 contact: Object.fromEntries(
                   Object.entries(inputs).map(([key, input]) => [key, input.value.trim()])
                 )

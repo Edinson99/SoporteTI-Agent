@@ -104,6 +104,7 @@ def test_ticket_envia_correo_gmail_por_starttls(tmp_path, monkeypatch):
     message = capturado["message"]
     assert message["From"] == "soporteitelectiva@gmail.com"
     assert message["To"] == "javiercito9456@gmail.com"
+    assert message["Cc"] == "javier@example.com"
     assert resultado["incident_id"] in message["Subject"]
     assert "USR-1042" in message.get_content()
     assert "Javier Perez" in message.get_content()

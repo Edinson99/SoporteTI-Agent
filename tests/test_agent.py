@@ -328,6 +328,13 @@ def test_chat_sin_guia_solicita_contacto_y_no_guarda_antes_de_autorizar(
 ):
     service = TicketService(tmp_path / "tickets.sqlite3")
     monkeypatch.setattr(main_module, "ticket_service", service)
+    calls = []
+
+    def respuesta_modelo(question, diagnostico, history):
+        calls.append((question, diagnostico["needs_approval"], history))
+        return "No encuentro una guía suficiente. ¿Quieres que contacte al técnico?"
+
+    monkeypatch.setattr(main_module, "generar_respuesta", respuesta_modelo)
     respuesta = client.post(
         "/agent/chat",
         json={
@@ -344,7 +351,18 @@ def test_chat_sin_guia_solicita_contacto_y_no_guarda_antes_de_autorizar(
     datos = respuesta.json()
     assert datos["contact_required"] is True
     assert datos["ticket_request_id"]
-    assert datos["chat_model_status"] == "not_used_escalation"
+    assert datos["chat_model_status"] == "used"
+    assert datos["answer"].startswith("No encuentro una guía")
+    assert calls == [
+        (
+            "La cafetera no funciona",
+            True,
+            [
+                {"role": "user", "content": "El problema empezo esta manana"},
+                {"role": "assistant", "content": "¿Que ocurre al encenderla?"},
+            ],
+        )
+    ]
     assert not service.database_path.exists()
 
 
@@ -358,6 +376,7 @@ def test_crear_ticket_exige_contacto_y_envia_conversacion(tmp_path, monkeypatch)
             "request_id": "25038ee8-92a5-4db4-b4b2-965983e367de",
             "question": "La cafetera no funciona",
             "user_id": "USR-1042",
+            "consent_to_email": True,
             "history": [
                 {"role": "user", "content": "El problema empezo esta manana"},
                 {"role": "assistant", "content": "¿Que ocurre al encenderla?"},
@@ -394,6 +413,7 @@ def test_crear_ticket_rechaza_contacto_invalido_y_consultas_con_guia():
             "request_id": "25038ee8-92a5-4db4-b4b2-965983e367de",
             "question": "La cafetera no funciona",
             "user_id": "USR-1042",
+            "consent_to_email": True,
         },
     )
     assert missing_contact.status_code == 400
@@ -404,6 +424,7 @@ def test_crear_ticket_rechaza_contacto_invalido_y_consultas_con_guia():
             "request_id": "25038ee8-92a5-4db4-b4b2-965983e367df",
             "question": "No tengo internet",
             "user_id": "USR-1042",
+            "consent_to_email": True,
             "contact": {
                 "name": "Javier Perez",
                 "email": "javier@example.com",
@@ -412,6 +433,28 @@ def test_crear_ticket_rechaza_contacto_invalido_y_consultas_con_guia():
         },
     )
     assert known_issue.status_code == 409
+
+
+def test_crear_ticket_requiere_consentimiento_explicito(tmp_path, monkeypatch):
+    service = TicketService(tmp_path / "tickets.sqlite3")
+    monkeypatch.setattr(main_module, "ticket_service", service)
+    response = client.post(
+        "/agent/tickets",
+        json={
+            "request_id": "45038ee8-92a5-4db4-b4b2-965983e367de",
+            "question": "La cafetera no funciona",
+            "user_id": "USR-1042",
+            "consent_to_email": False,
+            "contact": {
+                "name": "Javier Perez",
+                "email": "javier@example.com",
+                "phone": "+57 300 123 4567",
+            },
+        },
+    )
+
+    assert response.status_code == 403
+    assert not service.database_path.exists()
 
 
 def test_panel_de_tickets_lista_y_marca_resuelto(tmp_path, monkeypatch):
@@ -423,6 +466,7 @@ def test_panel_de_tickets_lista_y_marca_resuelto(tmp_path, monkeypatch):
             "request_id": "35038ee8-92a5-4db4-b4b2-965983e367de",
             "question": "La cafetera no funciona",
             "user_id": "USR-1042",
+            "consent_to_email": True,
             "contact": {
                 "name": "Javier Perez",
                 "email": "javier@example.com",

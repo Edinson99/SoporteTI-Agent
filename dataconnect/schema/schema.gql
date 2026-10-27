@@ -1,0 +1,32 @@
+type Ticket @table(name: "tickets") {
+  requestId: String! @col(name: "request_id")
+  contactName: String!
+  contactEmail: String!
+  contactPhone: String!
+  queryText: String!
+  contextJson: String
+  category: String!
+  priority: String!
+  status: String!
+  resolutionNote: String
+  assigneeEmail: String
+  emailSentStatus: Boolean @default(value: false)
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+type TicketMessage @table(name: "ticket_messages") {
+  ticket: Ticket!
+  senderType: String!
+  content: String!
+  timestamp: Timestamp! @default(expr: "request.time")
+}
+
+type TicketAuditEvent @table(name: "ticket_audit_events") {
+  ticket: Ticket!
+  eventType: String!
+  performedBy: String!
+  previousValue: String
+  newValue: String
+  timestamp: Timestamp! @default(expr: "request.time")
+}

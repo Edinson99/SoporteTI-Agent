@@ -267,6 +267,7 @@ class TicketService:
         message["Subject"] = f"[{ticket_number}] Incidencia sin guia - {category}"
         message["From"] = sender
         message["To"] = recipient
+        message["Cc"] = contact_email
         conversation_text = "\n\n".join(
             f"{'Usuario' if item['role'] == 'user' else 'Asistente'}: {item['content']}"
             for item in conversation
