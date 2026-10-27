@@ -1,4 +1,4 @@
-# Contrato de la API
+# Contrato de la API v1.3.0
 
 ## `GET /health`
 
@@ -10,7 +10,8 @@ No recibe cuerpo y responde `200`:
 
 ## `POST /agent/ask`
 
-Recibe una incidencia de soporte TI, valida el contrato, consulta conocimiento local y responde pasos seguros o una escalacion pendiente de aprobacion.
+Busca guias locales, plantea hipotesis y pruebas provisionales, y solicita los
+datos faltantes o revision humana.
 
 ### Entrada
 
@@ -28,23 +29,61 @@ Recibe una incidencia de soporte TI, valida el contrato, consulta conocimiento l
 | Campo | Tipo | Obligatorio | Uso |
 | --- | --- | --- | --- |
 | `question` | texto | Si | Problema de soporte, entre 5 y 500 caracteres. |
-| `user_id` | texto | Si | Identificador del usuario para la escalacion. |
-| `context` | objeto | No | Datos como dispositivo o sistema operativo. |
+| `user_id` | texto | Si | Identificador declarado por el cliente; no autentica al usuario. |
+| `context` | objeto | No | Datos del equipo, alcance, error, cambios recientes o pruebas reportadas. |
 
-### Respuesta de caso conocido `200`
+### Respuesta `200`
 
 ```json
 {
-  "answer": "Para portatil: 1. Verifica la red. 2. Confirma WiFi activo.",
+  "answer": "Para portatil: 1. Verifica si otro dispositivo puede conectarse a la misma red.",
   "sources": ["kb_internet_001"],
   "needs_approval": false,
-  "next_action": "seguir_pasos_seguros"
+  "next_action": "recopilar_datos",
+  "incident_id": null,
+  "category": "redes",
+  "priority": "normal",
+  "diagnosis": {
+    "summary": "La descripcion coincide con un problema de conectividad de red o Internet. La causa raiz aun no esta confirmada.",
+    "hypotheses": [
+      {
+        "cause": "Problema de conectividad de red o Internet",
+        "confidence": 0.59,
+        "sources": ["kb_internet_001"],
+        "rationale": "Coincidencia heuristica de palabras clave; no confirma la causa.",
+        "tests": ["Compara el resultado con otro equipo de la misma red."]
+      }
+    ],
+    "tests": ["Comprueba si otros dispositivos tienen conectividad."]
+  },
+  "evidence": ["Palabra clave coincidente: internet"],
+  "confidence": 0.59,
+  "recommended_actions": ["Verifica si otro dispositivo puede conectarse a la misma red."],
+  "escalation_reason": null,
+  "follow_up_questions": ["¿Que sistema operativo y version utilizas?"]
 }
 ```
 
-### Respuesta de caso sin guia `200`
+La respuesta contiene `incident_id` (actualmente `null`), `category`,
+`priority`, `diagnosis` (resumen, hipotesis y pruebas), `evidence`,
+`confidence`, `recommended_actions`, `escalation_reason` y
+`follow_up_questions`, ademas de `answer`, `sources`, `needs_approval` y
+`next_action`. La confianza es heuristica y refleja coincidencia con guias; no
+es una probabilidad calibrada ni confirma la causa raiz.
 
-La API crea solo un borrador local y devuelve `needs_approval: true` con `next_action: "borrador_pendiente_aprobacion"`.
+### Contexto opcional
+
+`context` puede contener `device`, `operating_system`, `affected_scope`,
+`error_message`, `recent_changes` y `network_checks`. Este ultimo puede incluir
+los booleanos `gateway_reachable`, `dns_resolution` e `internet_reachable`;
+son resultados proporcionados por el usuario, no pruebas ejecutadas o
+verificadas por el servidor.
+
+### Respuesta de caso sin guia
+
+La API prepara solo un borrador en memoria y devuelve `needs_approval: true`,
+`next_action: "borrador_pendiente_aprobacion"` y el motivo en
+`escalation_reason`. No se asigna `incident_id` ni se persiste un ticket.
 
 ### Errores
 
@@ -55,4 +94,7 @@ La API crea solo un borrador local y devuelve `needs_approval: true` con `next_a
 
 ## Limites
 
-El agente no ejecuta comandos administrativos, no instala software, no cambia contrasenas, no modifica configuraciones criticas, no elimina archivos y no envia tickets automaticamente. La respuesta es una recomendacion segura; los cambios requieren intervencion o aprobacion humana.
+El agente no autentica `user_id`, no persiste incidencias, no ejecuta comandos,
+instala software, cambia contrasenas, modifica configuraciones criticas,
+elimina archivos ni envia tickets automaticamente. Las acciones de cambio
+requieren intervencion o aprobacion humana.

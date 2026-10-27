@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
@@ -19,8 +19,8 @@ UI_FILE = Path(__file__).parent / "static" / "index.html"
 
 app = FastAPI(
     title="SoporteTI-Agent API",
-    description="Agente de soporte TI con conocimiento local y limites seguros.",
-    version="0.1.0",
+    description="Agente de soporte TI con diagnostico guiado y conocimiento local.",
+    version="1.3.0",
 )
 
 
@@ -36,11 +36,45 @@ class AgentAskRequest(BaseModel):
     context: dict[str, Any] | None = None
 
 
+class DiagnosticHypothesis(BaseModel):
+    cause: str
+    confidence: float = Field(..., ge=0, le=1)
+    sources: list[str]
+    rationale: str
+    tests: list[str]
+
+
+class AgentDiagnosis(BaseModel):
+    summary: str
+    hypotheses: list[DiagnosticHypothesis]
+    tests: list[str]
+
+
 class AgentAskResponse(BaseModel):
     answer: str
     sources: list[str]
     needs_approval: bool
     next_action: str
+    incident_id: str | None = None
+    category: Literal[
+        "redes",
+        "cuentas",
+        "ciberseguridad",
+        "hardware",
+        "sistemas_operativos",
+        "correo",
+        "software",
+        "datos",
+        "diagnostico",
+        "general",
+    ]
+    priority: Literal["normal", "high"]
+    diagnosis: AgentDiagnosis
+    evidence: list[str]
+    confidence: float = Field(..., ge=0, le=1)
+    recommended_actions: list[str]
+    escalation_reason: str | None = None
+    follow_up_questions: list[str]
 
 
 @app.exception_handler(RequestValidationError)

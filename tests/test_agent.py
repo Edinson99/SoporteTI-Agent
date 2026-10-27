@@ -6,9 +6,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.agent import AgenteSoporteTI
-from app.main import app
+from app.lambda_handler import handler as lambda_handler
+from app.main import AgentAskResponse, app
 from app.mcp_server import consultar_soporte_ti
-from app.tools import buscar_conocimiento
+from app.tools import buscar_conocimiento, buscar_conocimientos, cargar_base_conocimiento
 
 client = TestClient(app)
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -18,9 +19,24 @@ def test_ejemplos_json_son_validos_y_contienen_el_contrato():
     request = json.loads((DATA_DIR / "agent_request.json").read_text(encoding="utf-8"))
     response = json.loads((DATA_DIR / "agent_response.json").read_text(encoding="utf-8"))
     assert {"question", "user_id", "context"} <= request.keys()
-    assert {"answer", "sources", "needs_approval", "next_action"} <= response.keys()
+    assert {
+        "answer",
+        "sources",
+        "needs_approval",
+        "next_action",
+        "incident_id",
+        "category",
+        "priority",
+        "diagnosis",
+        "evidence",
+        "confidence",
+        "recommended_actions",
+        "escalation_reason",
+        "follow_up_questions",
+    } <= response.keys()
     assert isinstance(response["sources"], list)
     assert isinstance(response["needs_approval"], bool)
+    AgentAskResponse.model_validate(response)
 
 
 def test_busca_conocimiento_de_internet():
@@ -31,6 +47,22 @@ def test_busca_conocimiento_de_internet():
 
 def test_busqueda_no_coincide_con_palabras_parciales():
     assert buscar_conocimiento("La pared necesita pintura") is None
+
+
+def test_busqueda_normaliza_acentos_y_devuelve_varias_coincidencias():
+    assert buscar_conocimiento("Tengo una licéncia expirada")["id"] == "kb_licencias_activacion_001"
+
+    resultados = buscar_conocimientos("No funciona el wifi y la impresora")
+    fuentes = {resultado["articulo"]["id"] for resultado in resultados}
+    assert {"kb_internet_001", "kb_impresora_001"} <= fuentes
+
+
+def test_base_de_conocimiento_se_carga_una_vez():
+    cargar_base_conocimiento.cache_clear()
+    buscar_conocimiento("internet")
+    buscar_conocimiento("wifi")
+    assert cargar_base_conocimiento.cache_info().misses == 1
+    assert cargar_base_conocimiento.cache_info().hits == 1
 
 
 def test_base_conocimiento_incluye_guias_ti_frecuentes():
@@ -70,6 +102,66 @@ def test_agente_recomienda_pasos_seguros_para_caso_conocido():
     resultado = AgenteSoporteTI().responder("La impresora no imprime", "USR-1042")
     assert resultado["sources"] == ["kb_impresora_001"]
     assert resultado["needs_approval"] is False
+    assert resultado["next_action"] == "recopilar_datos"
+    assert resultado["incident_id"] is None
+    assert resultado["category"] == "hardware"
+    assert resultado["follow_up_questions"]
+    assert resultado["recommended_actions"]
+
+
+def test_diagnostico_de_red_distingue_fallo_dns_con_evidencia_reportada():
+    resultado = AgenteSoporteTI().responder(
+        "No tengo internet",
+        "USR-1042",
+        {
+            "network_checks": {
+                "gateway_reachable": True,
+                "dns_resolution": False,
+                "internet_reachable": False,
+            }
+        },
+    )
+    diagnostico = resultado["diagnosis"]
+    assert "DNS" in diagnostico["hypotheses"][0]["cause"]
+    assert any("El usuario reporta" in evidencia for evidencia in resultado["evidence"])
+    assert "Compara la resolucion" in " ".join(diagnostico["tests"])
+    assert resultado["confidence"] == 0.82
+
+
+def test_diagnostico_de_red_distingue_puerta_de_enlace_y_salida_a_internet():
+    agente = AgenteSoporteTI()
+    puerta_caida = agente.responder(
+        "No tengo internet",
+        "USR-1042",
+        {"network_checks": {"gateway_reachable": False}},
+    )
+    salida_caida = agente.responder(
+        "No tengo internet",
+        "USR-1042",
+        {
+            "network_checks": {
+                "gateway_reachable": True,
+                "dns_resolution": True,
+                "internet_reachable": False,
+            }
+        },
+    )
+    assert "puerta de enlace" in puerta_caida["diagnosis"]["hypotheses"][0]["cause"]
+    assert "aguas arriba" in salida_caida["diagnosis"]["hypotheses"][0]["cause"]
+
+
+def test_preguntas_de_seguimiento_respetan_contexto_y_no_piden_secretos():
+    resultado = AgenteSoporteTI().responder(
+        "No tengo internet",
+        "USR-1042",
+        {
+            "operating_system": "Windows 11",
+            "affected_scope": "solo mi equipo",
+            "error_message": "Sin conexion",
+            "recent_changes": "Ninguno",
+        },
+    )
+    assert resultado["follow_up_questions"] == []
     assert resultado["next_action"] == "seguir_pasos_seguros"
 
 
@@ -78,6 +170,18 @@ def test_agente_escala_caso_sin_guia():
     assert resultado["sources"] == ["protocolo_escalamiento"]
     assert resultado["needs_approval"] is True
     assert resultado["next_action"] == "borrador_pendiente_aprobacion"
+    assert resultado["incident_id"] is None
+    assert resultado["escalation_reason"]
+
+
+def test_incidente_de_phishing_recibe_prioridad_alta():
+    resultado = AgenteSoporteTI().responder(
+        "Recibi un correo sospechoso con un enlace sospechoso",
+        "USR-1042",
+    )
+    assert resultado["category"] == "ciberseguridad"
+    assert resultado["priority"] == "high"
+    assert resultado["recommended_actions"]
 
 
 def test_health():
@@ -106,6 +210,11 @@ def test_agent_ask_retorna_diagnostico_ti():
     datos = respuesta.json()
     assert datos["sources"] == ["kb_internet_001"]
     assert datos["needs_approval"] is False
+    assert datos["category"] == "redes"
+    assert datos["incident_id"] is None
+    assert 0 <= datos["confidence"] <= 1
+    assert datos["diagnosis"]["hypotheses"]
+    assert datos["follow_up_questions"]
 
 
 def test_agent_ask_rechaza_question_faltante():
@@ -123,7 +232,7 @@ def test_herramienta_mcp_consulta_el_diagnostico_compartido():
 
     assert resultado["sources"] == ["kb_internet_001"]
     assert resultado["needs_approval"] is False
-    assert resultado["next_action"] == "seguir_pasos_seguros"
+    assert resultado["next_action"] == "recopilar_datos"
 
 
 def test_herramienta_mcp_escala_casos_sin_guia():
@@ -132,3 +241,21 @@ def test_herramienta_mcp_escala_casos_sin_guia():
     assert resultado["sources"] == ["protocolo_escalamiento"]
     assert resultado["needs_approval"] is True
     assert resultado["next_action"] == "borrador_pendiente_aprobacion"
+
+
+def test_lambda_retorna_el_contrato_v13():
+    respuesta = lambda_handler(
+        {
+            "requestContext": {"http": {"method": "POST"}},
+            "rawPath": "/agent/ask",
+            "body": json.dumps(
+                {"question": "No tengo internet", "user_id": "USR-1042"}
+            ),
+        },
+        None,
+    )
+    assert respuesta["statusCode"] == 200
+    datos = json.loads(respuesta["body"])
+    assert datos["category"] == "redes"
+    assert datos["incident_id"] is None
+    assert "hypotheses" in datos["diagnosis"]

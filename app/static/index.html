@@ -263,6 +263,52 @@
 
     function renderAnswer(data) {
       const content = document.createElement("div");
+      if (data.diagnosis?.summary) {
+        const summary = document.createElement("p");
+        summary.textContent = data.diagnosis.summary;
+        content.append(summary);
+      }
+      if (data.diagnosis?.hypotheses?.length) {
+        const heading = document.createElement("p");
+        heading.textContent = "Hipótesis provisionales:";
+        content.append(heading);
+        const hypotheses = document.createElement("ul");
+        data.diagnosis.hypotheses.forEach((hypothesis) => {
+          const item = document.createElement("li");
+          item.textContent = `${hypothesis.cause} (coincidencia: ${Math.round(hypothesis.confidence * 100)}%)`;
+          hypotheses.append(item);
+        });
+        content.append(hypotheses);
+      }
+      if (data.diagnosis?.tests?.length) {
+        const heading = document.createElement("p");
+        heading.textContent = "Pruebas sugeridas:";
+        content.append(heading);
+        const tests = document.createElement("ul");
+        data.diagnosis.tests.forEach((test) => {
+          const item = document.createElement("li");
+          item.textContent = test;
+          tests.append(item);
+        });
+        content.append(tests);
+      }
+      if (data.evidence?.length) {
+        const heading = document.createElement("p");
+        heading.textContent = "Evidencia considerada:";
+        content.append(heading);
+        const evidence = document.createElement("ul");
+        data.evidence.forEach((detail) => {
+          const item = document.createElement("li");
+          item.textContent = detail;
+          evidence.append(item);
+        });
+        content.append(evidence);
+      }
+      if (data.escalation_reason) {
+        const reason = document.createElement("p");
+        reason.textContent = `Motivo de escalación: ${data.escalation_reason}`;
+        content.append(reason);
+      }
       const intro = data.answer.match(/^Para [^:]+:\s*/);
       const stepsText = intro ? data.answer.slice(intro[0].length) : "";
       const steps = stepsText.split(/\s(?=\d+\.\s)/).filter(Boolean);
@@ -285,9 +331,22 @@
         content.append(paragraph);
       }
 
+      if (data.follow_up_questions?.length) {
+        const heading = document.createElement("p");
+        heading.textContent = "Para afinar el diagnóstico, indica:";
+        content.append(heading);
+        const questions = document.createElement("ul");
+        data.follow_up_questions.forEach((question) => {
+          const item = document.createElement("li");
+          item.textContent = question;
+          questions.append(item);
+        });
+        content.append(questions);
+      }
+
       const meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = `${data.needs_approval ? "Requiere revisión humana" : "Guía: " + (data.sources.join(", ") || "soporte TI")} · ${data.next_action.replaceAll("_", " ")}`;
+      meta.textContent = `${data.needs_approval ? "Requiere revisión humana" : "Guía: " + (data.sources.join(", ") || "soporte TI")} · Prioridad ${data.priority} · ${data.next_action.replaceAll("_", " ")}`;
       content.append(meta);
       addMessage("agent", content, data.needs_approval ? "escalation" : "");
     }

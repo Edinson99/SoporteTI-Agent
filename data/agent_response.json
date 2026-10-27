@@ -2,5 +2,42 @@
   "answer": "Para portatil: verifica la conexion de red y sigue los pasos seguros de la base de conocimiento.",
   "sources": ["kb_internet_001"],
   "needs_approval": false,
-  "next_action": "seguir_pasos_seguros"
+  "next_action": "recopilar_datos",
+  "incident_id": null,
+  "category": "redes",
+  "priority": "normal",
+  "diagnosis": {
+    "summary": "La descripcion coincide con un problema de conectividad de red o Internet. La causa raiz aun no esta confirmada.",
+    "hypotheses": [
+      {
+        "cause": "Problema de conectividad de red o Internet",
+        "confidence": 0.59,
+        "sources": ["kb_internet_001"],
+        "rationale": "Coincidencia de palabras clave: internet. Es una pista, no una causa confirmada.",
+        "tests": [
+          "Confirma si el problema se reproduce y desde cuando ocurre.",
+          "Compara el resultado con otro equipo o servicio equivalente, si esta autorizado."
+        ]
+      }
+    ],
+    "tests": [
+      "Confirma si el problema se reproduce y desde cuando ocurre.",
+      "Compara el resultado con otro equipo o servicio equivalente, si esta autorizado."
+    ]
+  },
+  "evidence": ["Palabra clave coincidente: internet"],
+  "confidence": 0.59,
+  "recommended_actions": [
+    "Verifica si otro dispositivo puede conectarse a la misma red.",
+    "Confirma que el modo avion este desactivado y que WiFi este activo.",
+    "Reinicia el adaptador de red desde la configuracion del sistema.",
+    "Si el problema continua, informa el resultado al equipo de soporte."
+  ],
+  "escalation_reason": null,
+  "follow_up_questions": [
+    "¿Que sistema operativo y version utilizas?",
+    "¿Afecta solo a tu equipo o tambien a otras personas o equipos?",
+    "¿Que mensaje de error exacto aparece? No incluyas contrasenas ni codigos MFA.",
+    "¿Que cambio ocurrio poco antes de que empezara el problema?"
+  ]
 }

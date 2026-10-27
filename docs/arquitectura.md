@@ -7,8 +7,9 @@
 | Interfaz HTTP | `app/main.py` | Expone `GET /health` y `POST /agent/ask`. | FastAPI |
 | Contrato HTTP | `AgentAskRequest`, `AgentAskResponse` | Valida solicitud y estructura de respuesta. | Pydantic |
 | Adaptador Lambda | `app/lambda_handler.py` | Adapta eventos de API Gateway HTTP API al mismo contrato y agente. | AWS Lambda |
-| Orquestacion compartida | `app/agent.py` (`AgenteSoporteTI`) | Decide entre devolver pasos conocidos o solicitar revision humana. | Python |
-| Busqueda y escalacion | `app/tools.py` | Busca el articulo mas especifico por palabra clave completa y prepara un borrador local. | Python |
+| Orquestacion compartida | `app/agent.py` (`AgenteSoporteTI`) | Coordina busqueda, preguntas de seguimiento, recomendaciones y escalacion. | Python |
+| Busqueda y escalacion | `app/tools.py` | Carga conocimiento una vez, normaliza acentos y ordena varias coincidencias completas. | Python |
+| Diagnostico | `app/diagnostics.py` | Produce hipotesis heuristicas e interpreta resultados de red declarados por el usuario; no ejecuta comprobaciones. | Python |
 | Conocimiento | `data/conocimiento_soporte.json` | Contiene articulos, palabras clave y pasos de soporte. | JSON versionado |
 | Adaptador MCP | `app/mcp_server.py` (`consultar_soporte_ti`) | Publica la misma logica para Hermes mediante stdio; valida el contrato HTTP. | MCP Python SDK |
 | Orquestador conversacional | Hermes Agent | Presenta la conversacion y decide cuando invocar la herramienta MCP. | Hermes |
@@ -34,7 +35,8 @@ flowchart TB
         MCP["Servidor MCP stdio<br/>consultar_soporte_ti"]
         VALID["Pydantic<br/>validacion del contrato"]
         AGENT["AgenteSoporteTI"]
-        SEARCH["buscar_conocimiento"]
+        SEARCH["buscar_conocimientos"]
+        DIAG["app/diagnostics.py"]
         DECISION{"¿Hay guia coincidente?"}
         KB[("data/conocimiento_soporte.json")]
         ANSWER["Pasos seguros<br/>source: articulo"]
@@ -54,6 +56,7 @@ flowchart TB
     VALID -->|"invalido: HTTP 400 / error MCP"| RESP
     VALID -->|"valido"| AGENT
     AGENT --> SEARCH
+    AGENT --> DIAG
     SEARCH --> KB
     KB --> DECISION
     DECISION -->|"si"| ANSWER
@@ -79,11 +82,12 @@ cotidiano, la [guia para usuarios](guia-usuario-hermes-kimi.md).
 
 1. **Objetivo y contexto:** recibe `question`, `user_id` y `context` opcional.
 2. **Validacion:** exige pregunta de 5 a 500 caracteres e identificador de usuario de 3 a 50 caracteres.
-3. **Decision:** `buscar_conocimiento` compara palabras completas y prefiere la frase coincidente mas especifica.
-4. **Respuesta conocida:** devuelve los pasos del articulo, su identificador en `sources`, `needs_approval: false` y `seguir_pasos_seguros`.
-5. **Escalacion:** cuando no hay articulo, crea un borrador solo en memoria y devuelve `needs_approval: true` y `borrador_pendiente_aprobacion`.
-6. **Observabilidad del resultado:** HTTP expone JSON; MCP entrega los mismos campos como resultado de herramienta.
-7. **Limites:** no se ejecutan los comandos que se mencionan en articulos, no se cambia configuracion del equipo, no se modifica una contrasena y no se crea ni envia un ticket real.
+3. **Decision:** `buscar_conocimientos` normaliza acentos y puntuacion, compara palabras completas y ordena las guias por coincidencias.
+4. **Diagnostico:** `app/diagnostics.py` formula hipotesis y preguntas; si el usuario declara resultados de red, los interpreta como no verificados.
+5. **Respuesta conocida:** devuelve las guias, pasos, confianza heuristica y `recopilar_datos` si falta contexto.
+6. **Escalacion:** cuando no hay articulo, crea un borrador solo en memoria y devuelve `needs_approval: true` y `borrador_pendiente_aprobacion`.
+7. **Observabilidad del resultado:** HTTP expone JSON; MCP entrega los mismos campos como resultado de herramienta.
+8. **Limites:** no se ejecutan comandos, no se cambia configuracion del equipo, no se modifica una contrasena y no se crea ni envia un ticket real.
 
 ## Modos de ejecucion
 
@@ -94,7 +98,7 @@ cotidiano, la [guia para usuarios](guia-usuario-hermes-kimi.md).
 ## Datos, seguridad y limites
 
 - `data/conocimiento_soporte.json` se versiona junto con el codigo; los articulos no se descargan de una fuente externa durante la solicitud.
-- El borrador de escalacion no se guarda ni se envia. Un sistema de tickets requerira integracion, persistencia y aprobacion explicita.
+- El borrador de escalacion no se guarda ni se envia. `incident_id` permanece en `null`; un sistema de tickets requiere integracion, persistencia y aprobacion explicita.
 - La API HTTP documentada no incluye autenticacion. Antes de exponerla en una red publica se deben anadir autenticacion, autorizacion, limites de uso y transporte seguro.
 - MCP stdio es local al entorno que ejecuta Hermes. No se debe exponer como servicio remoto sin autenticacion y transporte seguro.
 - Las claves API no pertenecen a la base de conocimiento ni al repositorio. Kimi se configura en Hermes y `.env` se mantiene local.
@@ -103,9 +107,10 @@ cotidiano, la [guia para usuarios](guia-usuario-hermes-kimi.md).
 ## Limites y trabajo futuro
 
 La base de conocimiento y los borradores son locales y no persistentes. La
-busqueda es por palabras clave, no comprende automaticamente sinonimos,
-intencion o multiples incidencias. Para un uso productivo faltan, segun el modo
-de despliegue, autenticacion, autorizacion, persistencia/auditoria,
-observabilidad, integracion aprobada con tickets y un proceso de revision de
-articulos. Las recomendaciones siguen siendo informativas y deben escalarse si
-no coinciden con el entorno institucional.
+busqueda sigue siendo por palabras clave y no comprende semanticamente
+sinonimos o intenciones. La confianza es heuristica y no calibrada. Para un uso
+productivo faltan, segun el modo de despliegue, autenticacion, autorizacion,
+persistencia/auditoria, RAG, integracion aprobada con tickets, herramientas
+remotas autorizadas y un proceso de revision de articulos. Las recomendaciones
+siguen siendo informativas y deben escalarse si no coinciden con el entorno
+institucional.
