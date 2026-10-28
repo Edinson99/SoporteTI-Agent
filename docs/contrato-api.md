@@ -1,4 +1,4 @@
-# Contrato de la API v1.3.7
+# Contrato de la API v1.3.8
 
 Este archivo conserva la ruta de documentación utilizada en versiones
 anteriores. El contrato completo y vigente, incluidos esquemas, ejemplos,
@@ -34,6 +34,9 @@ local, la autorización y los permisos.
   oficial y analizar capturas. Los adjuntos solo se conservan en el ticket tras
   el consentimiento; no se envían por correo. Consulta las
   [notas 1.3.7](version-1.3.7.md).
+- **1.3.8:** el chat responde en español sin tildes ni `ñ`; el correo normaliza
+  también el asunto, el contenido y la firma de Gmail. Consulta las
+  [notas 1.3.8](version-1.3.8.md).
 
 La lógica determinista compartida no ejecuta comandos ni modifica equipos.
 El panel y las rutas de tickets no autentican técnicos; mantenlos en loopback

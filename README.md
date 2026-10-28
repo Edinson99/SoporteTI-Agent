@@ -2,10 +2,12 @@
 
 **Un asistente de soporte TI que convierte incidencias comunes en pasos claros y seguros.**
 
-**Versión actual: 1.3.7.** El chat puede hacer preguntas de seguimiento,
-consultar documentación oficial y analizar capturas antes de escalar un caso.
+**Versión actual: 1.3.8.** El chat responde en español sin tildes ni `ñ`,
+puede hacer preguntas de seguimiento, consultar documentación oficial y analizar
+capturas antes de escalar un caso.
 La versión 1.3.5 incorporó el envío por Gmail API con la firma configurada en
 Gmail; la 1.3.6 mejoró la gestión local de tickets. Consulta las
+[notas 1.3.8](docs/version-1.3.8.md), las
 [notas 1.3.7](docs/version-1.3.7.md), las
 [notas 1.3.6](docs/version-1.3.6.md), las
 [notas 1.3.5](docs/version-1.3.5.md), las
@@ -32,6 +34,7 @@ Describe el problema; SoporteTI-Agent busca una guía local, devuelve recomendac
 - 📋 Permitir al técnico revisar tickets locales, registrar una nota y marcarlos resueltos.
 - 🔌 Ofrecer diagnóstico local mediante API HTTP, AWS Lambda o MCP; el chat web puede redactar la respuesta mediante Hermes y el modelo configurado en la estación.
 - ✅ Validar las solicitudes y responder con un contrato JSON consistente.
+- ✉️ Enviar correos de ticket con la firma de Gmail y texto sin tildes ni `ñ`.
 
 ### Temas cubiertos
 

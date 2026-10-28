@@ -320,11 +320,55 @@ def test_chat_hermes_enriquece_diagnostico_local_con_kimi(monkeypatch):
     )
     assert respuesta.status_code == 200
     datos = respuesta.json()
-    assert datos["answer"].startswith("La hipótesis principal")
+    assert datos["answer"].startswith("La hipotesis principal")
+    assert "aun no esta confirmada" in datos["answer"]
+    assert not any(
+        character in datos["answer"]
+        for character in "\u00e1\u00e9\u00ed\u00f3\u00fa\u00fc\u00f1"
+        "\u00c1\u00c9\u00cd\u00d3\u00da\u00dc\u00d1"
+    )
     assert datos["diagnosis"]["hypotheses"][0]["cause"].startswith(
         "La resolucion DNS"
     )
     assert datos["sources"] == ["kb_internet_001"]
+
+
+def test_chat_acepta_respuestas_previas_mayores_a_1500_caracteres(monkeypatch):
+    observed_history = []
+
+    def generate(question, diagnosis, history):
+        observed_history.extend(history)
+        return "¿Qué resultado obtuviste?"
+
+    monkeypatch.setattr(main_module, "generar_respuesta", generate)
+    long_answer = "respuesta larga " * 130
+    response = client.post(
+        "/agent/chat",
+        json={
+            "question": "Sigue fallando el internet",
+            "user_id": "USR-1042",
+            "history": [
+                {"role": "assistant", "content": long_answer},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert observed_history[0]["content"] == long_answer
+
+
+def test_chat_rechaza_historial_mayor_a_4000_caracteres():
+    response = client.post(
+        "/agent/chat",
+        json={
+            "question": "Sigue fallando el internet",
+            "user_id": "USR-1042",
+            "history": [
+                {"role": "assistant", "content": "x" * 4001},
+            ],
+        },
+    )
+    assert response.status_code == 400
 
 
 def test_chat_sin_guia_pide_mas_datos_antes_de_ofrecer_contacto(
@@ -356,7 +400,7 @@ def test_chat_sin_guia_pide_mas_datos_antes_de_ofrecer_contacto(
     assert datos["contact_required"] is False
     assert datos["ticket_request_id"] is None
     assert datos["chat_model_status"] == "used"
-    assert datos["answer"].startswith("¿Qué ocurre")
+    assert datos["answer"].startswith("¿Que ocurre")
     assert datos["follow_up_questions"]
     assert calls == [
         (
@@ -771,7 +815,7 @@ def test_puente_hermes_lanza_cli_sin_herramientas_y_con_referencia_local(monkeyp
         capturado["command"] = command
         capturado["kwargs"] = kwargs
         return hermes_bridge.subprocess.CompletedProcess(
-            command, 0, stdout="Respuesta redactada por Kimi\n", stderr=""
+            command, 0, stdout="Revisión rápida: ¿puedes probarlo?\n", stderr=""
         )
 
     monkeypatch.setattr(
@@ -786,7 +830,8 @@ def test_puente_hermes_lanza_cli_sin_herramientas_y_con_referencia_local(monkeyp
         [{"role": "user", "content": "No resuelve nombres"}],
     )
     command = capturado["command"]
-    assert answer == "Respuesta redactada por Kimi"
+    assert answer == "Revision rapida: ¿puedes probarlo?"
+    assert "No uses tildes ni la letra enye" in command[2]
     assert command[-2:] == ["--toolsets", "web"]
     assert "kb_internet_001" in command[2]
     assert "No resuelve nombres" in command[2]

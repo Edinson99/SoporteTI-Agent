@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sqlite3
+import unicodedata
 from datetime import datetime, timezone
 from email import policy
 from email.message import EmailMessage
@@ -26,6 +27,14 @@ from googleapiclient.errors import HttpError
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(_PROJECT_ROOT / ".env")
 _LOGGER = logging.getLogger(__name__)
+
+
+def _remove_diacritics(value: str) -> str:
+    return "".join(
+        character
+        for character in unicodedata.normalize("NFKD", value)
+        if not unicodedata.combining(character)
+    )
 
 
 class _SignatureTextParser(HTMLParser):
@@ -96,7 +105,7 @@ def _format_ticket_email_html(
         )
         for item in conversation
     ) or '<p style="color:#64748b;font-size:13px">Sin conversación registrada.</p>'
-    return f"""<!doctype html>
+    email_html = f"""<!doctype html>
 <html lang="es">
 <body style="margin:0;padding:24px 12px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#1e293b">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden">
@@ -156,6 +165,7 @@ def _format_ticket_email_html(
   </table>
 </body>
 </html>"""
+    return _remove_diacritics(email_html)
 
 
 class TicketService:
@@ -459,6 +469,7 @@ class TicketService:
         contact_email: str,
         contact_phone: str,
     ) -> str:
+        load_dotenv(_PROJECT_ROOT / ".env")
         sender = os.getenv("GMAIL_SENDER", "").strip()
         recipient = os.getenv("GMAIL_TO_EMAIL", "").strip()
         token_path = Path(
@@ -532,7 +543,7 @@ Conversacion disponible:
             signature = send_as.get("signature", "")
 
             message = EmailMessage()
-            message["Subject"] = (
+            message["Subject"] = _remove_diacritics(
                 f"[{priority.upper()}] [{ticket_number}] Incidencia - {category}"
             )
             message["From"] = sender
@@ -540,9 +551,13 @@ Conversacion disponible:
             message["Cc"] = contact_email
             signature_parser = _SignatureTextParser()
             signature_parser.feed(signature)
-            signature_text = "".join(signature_parser.parts).strip()
+            signature_text = _remove_diacritics(
+                "".join(signature_parser.parts).strip()
+            )
             message.set_content(
-                body_text + (f"\n\n{signature_text}" if signature_text else "")
+                _remove_diacritics(
+                    body_text + (f"\n\n{signature_text}" if signature_text else "")
+                )
             )
             message.add_alternative(
                 _format_ticket_email_html(
@@ -558,7 +573,7 @@ Conversacion disponible:
                     contact_name=contact_name,
                     contact_email=contact_email,
                     contact_phone=contact_phone,
-                    signature=signature,
+                    signature=_remove_diacritics(html.unescape(signature)),
                 ),
                 subtype="html",
             )

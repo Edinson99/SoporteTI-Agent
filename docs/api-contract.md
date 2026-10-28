@@ -1,6 +1,6 @@
 # API Contract
 
-Contrato de API de SoporteTI-Agent v1.3.7.
+Contrato de API de SoporteTI-Agent v1.3.8.
 
 ## `GET /health`
 
@@ -137,9 +137,12 @@ en Hermes (Kimi en la configuración recomendada) redacte `answer`, también
 cuando no hay una guía. La respuesta conserva el resto del contrato de
 `AgentAskResponse` para que la interfaz muestre hipótesis, evidencia y pasos
 recomendados. Se envían al modelo la pregunta, el resultado local y el
-historial; `user_id` no se incluye en el prompt. La API key permanece en Hermes.
+historial de hasta diez mensajes, con un máximo de 4000 caracteres por mensaje;
+`user_id` no se incluye en el prompt. La API key permanece en Hermes.
 Si Hermes o el proveedor configurado falla, devuelve `503`; no se presenta la
 respuesta local como si fuera una respuesta del modelo.
+La respuesta del chat se redacta en espanol sin tildes ni `ñ`; la API elimina
+diacriticos tambien de las preguntas de seguimiento que agrega el servidor.
 
 Hermes se invoca con la herramienta web para buscar información solo si la guía
 local no basta; cuando se adjuntan imágenes se habilita también la herramienta
@@ -269,7 +272,8 @@ validación usan `422`.
 
 El correo se envía por Gmail API OAuth. Cuando la cuenta remitente tiene una
 firma configurada en Gmail, se consulta y añade al mensaje al enviarlo. La
-configuración y el flujo de autorización están en las
+firma y el contenido del correo se normalizan para quitar tildes y convertir
+`ñ`/`Ñ` en `n`/`N`. La configuración y el flujo de autorización están en las
 [notas de la versión 1.3.5](version-1.3.5.md). El ticket se guarda antes de
 intentar enviar el correo; un error de Gmail no elimina el ticket.
 

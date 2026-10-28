@@ -5,7 +5,7 @@ import sqlite3
 from email import policy
 from email.parser import BytesParser
 
-from app.tickets import TicketService
+from app.tickets import TicketService, _PROJECT_ROOT
 
 
 def _create_ticket(service, **overrides):
@@ -102,7 +102,12 @@ def test_ticket_envia_correo_con_firma_de_gmail_api(tmp_path, monkeypatch):
         def get(self, *, userId, sendAsEmail):
             capturado["send_as"] = (userId, sendAsEmail)
             return FakeCall(
-                {"signature": "<div>Saludos,<br><b>Javier</b></div>"}
+                {
+                    "signature": (
+                        "<div>Saludos,<br><b>Javier Mu&#241;oz</b><br>"
+                        "Revisi&oacute;n t&eacute;cnica</div>"
+                    )
+                }
             )
 
         def messages(self):
@@ -114,18 +119,28 @@ def test_ticket_envia_correo_con_firma_de_gmail_api(tmp_path, monkeypatch):
 
     token_file = tmp_path / "gmail-token.json"
     token_file.write_text("{}", encoding="utf-8")
-    monkeypatch.setenv("GMAIL_SENDER", "soporte@example.com")
-    monkeypatch.setenv("GMAIL_TO_EMAIL", "tecnico@example.com")
+    monkeypatch.delenv("GMAIL_SENDER", raising=False)
+    monkeypatch.delenv("GMAIL_TO_EMAIL", raising=False)
     monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", str(token_file))
+    config_path = _PROJECT_ROOT / ".env"
+
+    def load_mail_config(path):
+        capturado["config_path"] = path
+        monkeypatch.setenv("GMAIL_SENDER", "soporte@example.com")
+        monkeypatch.setenv("GMAIL_TO_EMAIL", "tecnico@example.com")
+
+    monkeypatch.setattr("app.tickets.load_dotenv", load_mail_config)
     monkeypatch.setattr("app.tickets.Credentials", FakeCredentials)
     monkeypatch.setattr("app.tickets.build", lambda *args, **kwargs: FakeGmail())
-    malicious_question = "La aplicación falla <script>alert('test')</script>"
+    malicious_question = "La aplicación del niño falla <script>alert('test')</script>"
     resultado = _create_ticket(
         TicketService(tmp_path / "tickets.sqlite3"),
         question=malicious_question,
+        category="niño educación",
     )
 
     assert resultado["ticket_email_status"] == "sent"
+    assert capturado["config_path"] == config_path
     assert capturado["token_path"] == str(token_file)
     assert "https://www.googleapis.com/auth/gmail.settings.basic" in capturado["scopes"]
     assert capturado["send_as"] == ("me", "soporte@example.com")
@@ -137,21 +152,39 @@ def test_ticket_envia_correo_con_firma_de_gmail_api(tmp_path, monkeypatch):
     assert message["To"] == "tecnico@example.com"
     assert message["Cc"] == "javier@example.com"
     assert "[NORMAL]" in message["Subject"]
+    assert "nino educacion" in str(message["Subject"])
     assert resultado["incident_id"] in message["Subject"]
     text_content = message.get_body(preferencelist=("plain",)).get_content()
     assert "USR-1042" in text_content
     assert "Saludos," in text_content
     assert "Javier" in text_content
     assert "Javier Perez" in text_content
+    assert "Javier Munoz" in text_content
+    assert "Revision tecnica" in text_content
     assert "javier@example.com" in text_content
     assert "+57 300 123 4567" in text_content
     assert "El problema empezo hoy" in text_content
     html_content = message.get_body(preferencelist=("html",)).get_content()
-    assert "<div>Saludos,<br><b>Javier</b></div>" in html_content
-    assert "Requiere revisión técnica" in html_content
-    assert "Descripción del problema" in html_content
+    assert (
+        "<div>Saludos,<br><b>Javier Munoz</b><br>Revision tecnica</div>"
+        in html_content
+    )
+    assert "Javier Munoz" in html_content
+    assert "Revision tecnica" in html_content
+    outgoing_content = str(message["Subject"]) + text_content + html_content
+    assert not any(
+        character in outgoing_content
+        for character in "\u00e1\u00e9\u00ed\u00f3\u00fa\u00fc\u00f1"
+        "\u00c1\u00c9\u00cd\u00d3\u00da\u00dc\u00d1"
+    )
+    assert "Requiere revision tecnica" in html_content
+    assert "Descripcion del problema" in html_content
     assert "background:#102a43" in html_content
-    assert html.escape(malicious_question) in html_content
+    assert (
+        "La aplicacion del nino falla "
+        "&lt;script&gt;alert(&#x27;test&#x27;)&lt;/script&gt;"
+        in html_content
+    )
     assert "<script>" not in html_content
 
 

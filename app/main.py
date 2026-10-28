@@ -20,7 +20,11 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.agent import AgenteSoporteTI
 from app.dataconnect_tickets import DataConnectError, FirebaseDataConnectTicketService
-from app.hermes_bridge import HermesBridgeError, generar_respuesta
+from app.hermes_bridge import (
+    HermesBridgeError,
+    generar_respuesta,
+    normalizar_respuesta,
+)
 from app.tickets import TicketService
 
 
@@ -32,11 +36,12 @@ _IMAGE_EXTENSIONS = {
     "image/png": ".png",
     "image/webp": ".webp",
 }
+_MAX_CHAT_HISTORY_MESSAGE_LENGTH = 4000
 
 app = FastAPI(
     title="SoporteTI-Agent API",
     description="Agente de soporte TI con diagnostico guiado y conocimiento local.",
-    version="1.3.4",
+    version="1.3.8",
 )
 
 def _create_ticket_service() -> TicketService | FirebaseDataConnectTicketService:
@@ -93,7 +98,9 @@ class AgentChatContext(ChatContext):
 
 class ChatHistoryMessage(BaseModel):
     role: Literal["user", "assistant"]
-    content: str = Field(..., min_length=1, max_length=1500)
+    content: str = Field(
+        ..., min_length=1, max_length=_MAX_CHAT_HISTORY_MESSAGE_LENGTH
+    )
 
 
 class ChatImage(BaseModel):
@@ -377,6 +384,7 @@ def chat_with_hermes(req: AgentChatRequest, request: Request) -> AgentAskRespons
             resultado["follow_up_questions"],
             resultado["recommended_actions"],
         )
+    resultado["answer"] = normalizar_respuesta(resultado["answer"])
     resultado["chat_model_status"] = "used"
     if resultado["contact_required"]:
         resultado["ticket_request_id"] = uuid4()

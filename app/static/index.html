@@ -328,6 +328,7 @@
     const conversationImages = [];
     const maxImages = 3;
     const maxImageBytes = 2 * 1024 * 1024;
+    const maxHistoryMessageChars = 4000;
     const officialDomains = [
       "microsoft.com", "windows.com", "google.com", "android.com", "apple.com",
       "dell.com", "hp.com", "lenovo.com", "asus.com", "acer.com", "intel.com",
@@ -471,6 +472,13 @@
         content.append(gallery);
       }
       addMessage("user", content);
+    }
+
+    function compactHistoryContent(content) {
+      if (content.length <= maxHistoryMessageChars) return content;
+      const tail = content.slice(-(maxHistoryMessageChars - 100));
+      const headLength = maxHistoryMessageChars - tail.length - 5;
+      return `${content.slice(0, headLength)}\n...\n${tail}`;
     }
 
     function appendOfficialLinks(parent, text) {
@@ -749,7 +757,7 @@
         }
         conversationHistory.push(
           { role: "user", content: question },
-          { role: "assistant", content: data.answer }
+          { role: "assistant", content: compactHistoryContent(data.answer) }
         );
         conversationImages.push(...submittedImages);
         selectedImages.splice(0, selectedImages.length);
