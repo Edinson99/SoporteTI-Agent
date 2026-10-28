@@ -1,4 +1,11 @@
-# Reporte de Matriz - SoporteTI-Agent v0.1
+# Reporte histórico de Matriz - SoporteTI-Agent v0.1
+
+> Este documento conserva la matriz y evidencia del corte v0.1; no describe
+> todas las funciones añadidas después. Para el comportamiento vigente,
+> consulta el [README](../README.md), el
+> [contrato actual de API](api-contract.md), el
+> [mapa de arquitectura](arquitectura.md) y las
+> [notas 1.3.5–1.3.7](version-1.3.5.md).
 
 Esta matriz relaciona cada superficie del producto con su contrato, limite y
 verificacion. La API HTTP, Lambda y MCP comparten el mismo agente y la misma

@@ -1,4 +1,4 @@
-# Guia para usuarios: empezar a usar Soporte TI con Hermes y Kimi
+# Guia para usuarios: chat local, Hermes y Kimi
 
 Esta guia explica como iniciar la conversacion de soporte una vez que el equipo
 ya fue configurado. No necesitas conocer Python ni modificar el agente para
@@ -12,8 +12,9 @@ utilizarlo.
   herramienta llamada `consultar_soporte_ti`.
 - **MCP** es el mecanismo que permite a Hermes consultar esa herramienta.
 
-Kimi no cambia tu equipo. El agente tampoco ejecuta arreglos ni crea tickets
-reales: recomienda pasos seguros o indica que el caso necesita revision humana.
+El modelo no cambia tu equipo. El chat no ejecuta arreglos ni crea un ticket
+hasta que confirmes la escalacion y autorices compartir tus datos de contacto.
+Recomienda pasos seguros o indica que el caso necesita revision humana.
 
 ## Iniciar Hermes desde Windows
 
@@ -53,31 +54,48 @@ reales: recomienda pasos seguros o indica que el caso necesita revision humana.
    .\scripts\start.ps1
    ```
 
-2. Abre `http://127.0.0.1:8000`. El encabezado del chat indica
-   **Hermes + Kimi**.
+2. Abre la direccion que indica el servidor (por ejemplo,
+   `http://127.0.0.1:8000`). El encabezado del chat muestra el modelo
+   configurado para esa instalacion.
 3. Describe la incidencia y, si ayuda, abre **Datos para afinar el
-   diagnóstico** para completar los datos disponibles.
-4. La aplicacion obtiene primero el diagnostico local y usa Hermes con el
-   modelo configurado (Kimi, en esta guia) para redactar la respuesta.
+   diagnóstico** para indicar el sistema operativo, el alcance, el mensaje o
+   código de error y los cambios recientes. También puedes adjuntar hasta tres
+   capturas JPG, PNG o WebP de máximo 2 MiB cada una.
+4. El chat obtiene primero el diagnóstico local. Si necesita más información,
+   responde las preguntas de seguimiento; en casos sin guía suficiente puede
+   pedir hasta dos aclaraciones antes de ofrecer escalar. Si deseas atención
+   humana, también puedes pedir contactar al técnico directamente.
+5. Si la guía local no basta, Hermes puede buscar documentación oficial y
+   mostrar enlaces. Si adjuntas capturas, puede intentar leer los códigos y
+   mensajes de error que sean visibles.
 
 Hermes debe estar instalado y configurado en WSL. La API key no se introduce en
-la pagina: la pregunta, el diagnostico y los mensajes recientes se envian al
-modelo por Hermes. No incluyas contrasenas, codigos MFA, claves ni informacion
-confidencial. Si Hermes o Kimi no estan disponibles, la pagina mostrara un
-error explicito en vez de fingir que el modelo respondio.
+la página: la pregunta, el contexto, el diagnóstico, el historial y las capturas
+del turno se envían al proveedor configurado mediante Hermes. Kimi es el
+proveedor recomendado en esta guía, pero el administrador puede configurar
+otro. No incluyas contraseñas, códigos MFA, claves ni información confidencial
+en el texto o las imágenes. Si Hermes o el proveedor configurado no están
+disponibles, la página mostrará un error explícito.
+
+El historial y las capturas viven en la sesión actual del navegador y se
+pierden al recargar la página. Las imágenes se conservan con el ticket solo
+después de autorizar la escalación; aparecen en el panel local y no se adjuntan
+al correo.
 
 ## Que esperar de la respuesta
 
-- Si existe una guia, Hermes puede resumir los pasos recomendados e indicar la
-  fuente utilizada.
+- Si existe una guía local, Hermes puede resumir los pasos recomendados e
+  indicar la fuente utilizada. La respuesta estructurada sigue procediendo del
+  diagnóstico local.
 - Si el problema no tiene una guia reconocida, te dira que requiere revision
   humana.
 - Si hay varios problemas, describelos claramente y pide ayuda con uno a la
   vez para evitar diagnosticos confusos.
 
-No compartas contrasenas, codigos de verificacion, claves API ni informacion
-confidencial en la conversacion. La clave de Kimi se configura de forma privada
-en Hermes y no se debe copiar a mensajes ni a archivos del repositorio.
+No compartas contraseñas, códigos de verificación, claves API ni información
+confidencial en la conversación o las capturas. Las credenciales del modelo se
+configuran de forma privada en Hermes y no se deben copiar a mensajes ni a
+archivos del repositorio.
 
 ## Si no funciona
 

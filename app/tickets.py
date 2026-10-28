@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+import base64
+import html
 import json
 import logging
 import os
-import smtplib
-import ssl
 import sqlite3
 from datetime import datetime, timezone
+from email import policy
 from email.message import EmailMessage
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
+from google.auth.exceptions import GoogleAuthError
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -21,8 +28,27 @@ load_dotenv(_PROJECT_ROOT / ".env")
 _LOGGER = logging.getLogger(__name__)
 
 
+class _SignatureTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_starttag(
+        self, tag: str, _attrs: list[tuple[str, str | None]]
+    ) -> None:
+        if tag in {"br", "div", "li", "p", "tr"}:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"div", "li", "p", "tr"}:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+
 class TicketService:
-    """Guarda tickets SQLite y notifica al tecnico si SMTP esta configurado."""
+    """Guarda tickets SQLite y notifica al tecnico mediante Gmail API."""
 
     def __init__(self, database_path: Path | None = None) -> None:
         configured_path = os.getenv("SOPORTE_TICKETS_DB")
@@ -45,6 +71,7 @@ class TicketService:
         contact_email: str,
         contact_phone: str,
         assistant_response: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
     ) -> dict[str, str]:
         """Persiste un ticket antes de intentar enviar su correo."""
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -99,6 +126,23 @@ class TicketService:
                 "UPDATE tickets SET ticket_number = ? WHERE id = ?",
                 (ticket_number, cursor.lastrowid),
             )
+            connection.executemany(
+                """
+                INSERT INTO ticket_attachments (
+                    attachment_id, ticket_number, file_name, content_type, image_data
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        attachment["id"],
+                        ticket_number,
+                        attachment["file_name"],
+                        attachment["content_type"],
+                        attachment["data"],
+                    )
+                    for attachment in attachments or []
+                ],
+            )
 
         email_status = self._send_email(
             ticket_number=ticket_number,
@@ -141,14 +185,56 @@ class TicketService:
                 FROM tickets ORDER BY id DESC
                 """
             ).fetchall()
+            attachment_rows = connection.execute(
+                """
+                SELECT attachment_id, ticket_number, file_name, content_type,
+                       length(image_data) AS size
+                FROM ticket_attachments ORDER BY rowid
+                """
+            ).fetchall()
+        attachments_by_ticket: dict[str, list[dict[str, Any]]] = {}
+        for attachment in attachment_rows:
+            attachments_by_ticket.setdefault(attachment["ticket_number"], []).append(
+                {
+                    "id": attachment["attachment_id"],
+                    "file_name": attachment["file_name"],
+                    "content_type": attachment["content_type"],
+                    "size": attachment["size"],
+                }
+            )
         return [
             {
                 **dict(row),
                 "context": json.loads(row["context_json"]),
                 "conversation": json.loads(row["conversation_json"]),
+                "attachments": attachments_by_ticket.get(row["ticket_number"], []),
             }
             for row in rows
         ]
+
+    def get_attachment(
+        self,
+        ticket_number: str,
+        attachment_id: str,
+    ) -> dict[str, Any] | None:
+        """Lee una imagen asociada al ticket solicitado."""
+        with sqlite3.connect(self.database_path, timeout=10) as connection:
+            self._ensure_schema(connection)
+            row = connection.execute(
+                """
+                SELECT file_name, content_type, image_data
+                FROM ticket_attachments
+                WHERE ticket_number = ? AND attachment_id = ?
+                """,
+                (ticket_number, attachment_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "file_name": row[0],
+            "content_type": row[1],
+            "data": row[2],
+        }
 
     def resolve_ticket(
         self,
@@ -212,6 +298,18 @@ class TicketService:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ticket_attachments (
+                attachment_id TEXT NOT NULL,
+                ticket_number TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                image_data BLOB NOT NULL,
+                PRIMARY KEY (ticket_number, attachment_id)
+            )
+            """
+        )
         columns = {
             row[1] for row in connection.execute("PRAGMA table_info(tickets)")
         }
@@ -250,24 +348,16 @@ class TicketService:
         contact_email: str,
         contact_phone: str,
     ) -> str:
-        sender = os.getenv("SMTP_FROM_EMAIL", "soporteitelectiva@gmail.com").strip()
-        recipient = os.getenv("SMTP_TO_EMAIL", "javiercito9456@gmail.com").strip()
-        username = os.getenv("SMTP_USERNAME", sender).strip()
-        password = "".join(os.getenv("SMTP_APP_PASSWORD", "").split())
-        if not all((sender, recipient, username, password)):
+        sender = os.getenv("GMAIL_SENDER", "").strip()
+        recipient = os.getenv("GMAIL_TO_EMAIL", "").strip()
+        token_path = Path(
+            os.getenv("GMAIL_OAUTH_TOKEN_FILE", ".secrets/gmail-token.json")
+        )
+        if not token_path.is_absolute():
+            token_path = _PROJECT_ROOT / token_path
+        if not all((sender, recipient)) or not token_path.is_file():
             return "not_configured"
 
-        try:
-            port = int(os.getenv("SMTP_PORT", "587"))
-        except ValueError:
-            _LOGGER.warning("SMTP_PORT invalido para el ticket %s", ticket_number)
-            return "failed"
-
-        message = EmailMessage()
-        message["Subject"] = f"[{ticket_number}] Incidencia sin guia - {category}"
-        message["From"] = sender
-        message["To"] = recipient
-        message["Cc"] = contact_email
         conversation_text = "\n\n".join(
             f"{'Usuario' if item['role'] == 'user' else 'Asistente'}: {item['content']}"
             for item in conversation
@@ -275,8 +365,7 @@ class TicketService:
         context_text = "\n".join(
             f"- {key}: {value}" for key, value in context.items()
         ) or "- Sin contexto adicional"
-        message.set_content(
-            f"""Borrador de incidencia para revision tecnica
+        body_text = f"""Borrador de incidencia para revision tecnica
 
 Ticket: {ticket_number}
 Fecha UTC: {created_at.isoformat()}
@@ -299,22 +388,64 @@ Contexto declarado:
 Conversacion disponible:
 {conversation_text}
 """
-        )
 
         try:
-            with smtplib.SMTP(
-                os.getenv("SMTP_HOST", "smtp.gmail.com"),
-                port,
-                timeout=15,
-            ) as smtp:
-                smtp.ehlo()
-                smtp.starttls(context=ssl.create_default_context())
-                smtp.ehlo()
-                smtp.login(username, password)
-                smtp.send_message(message)
-        except (OSError, smtplib.SMTPException) as exc:
+            credentials = Credentials.from_authorized_user_file(str(token_path))
+            if not credentials.has_scopes(
+                [
+                    "https://www.googleapis.com/auth/gmail.send",
+                    "https://www.googleapis.com/auth/gmail.settings.basic",
+                ]
+            ):
+                raise ValueError(
+                    "El token de Gmail no tiene permisos de envío y lectura de firma; "
+                    "vuelve a ejecutar scripts/authorize_gmail.py."
+                )
+            if not credentials.valid:
+                credentials.refresh(Request())
+                token_path.write_text(credentials.to_json(), encoding="utf-8")
+
+            gmail = build(
+                "gmail",
+                "v1",
+                credentials=credentials,
+                cache_discovery=False,
+            )
+            send_as = (
+                gmail.users()
+                .settings()
+                .sendAs()
+                .get(userId="me", sendAsEmail=sender)
+                .execute()
+            )
+            signature = send_as.get("signature", "")
+
+            message = EmailMessage()
+            message["Subject"] = f"[{ticket_number}] Incidencia sin guia - {category}"
+            message["From"] = sender
+            message["To"] = recipient
+            message["Cc"] = contact_email
+            signature_parser = _SignatureTextParser()
+            signature_parser.feed(signature)
+            signature_text = "".join(signature_parser.parts).strip()
+            message.set_content(
+                body_text + (f"\n\n{signature_text}" if signature_text else "")
+            )
+            if signature:
+                escaped_body = html.escape(body_text).replace("\n", "<br>\n")
+                message.add_alternative(
+                    f"<div>{escaped_body}</div><br>{signature}",
+                    subtype="html",
+                )
+            raw_message = base64.urlsafe_b64encode(
+                message.as_bytes(policy=policy.SMTP)
+            ).decode("ascii")
+            gmail.users().messages().send(
+                userId="me", body={"raw": raw_message}
+            ).execute()
+        except (OSError, ValueError, GoogleAuthError, HttpError) as exc:
             _LOGGER.warning(
-                "No se pudo enviar el correo del ticket %s: %s",
+                "No se pudo enviar el correo Gmail del ticket %s: %s",
                 ticket_number,
                 exc,
             )

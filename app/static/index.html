@@ -141,6 +141,14 @@
     .send:hover { transform: translateY(-1px); background: var(--blue-dark); }
     .send:disabled { cursor: wait; opacity: .7; }
     .send svg { width: 16px; height: 16px; }
+    .attachment-picker { display: grid; gap: 5px; min-width: 130px; color: var(--muted); font-size: 11px; }
+    .attachment-picker input { width: 100%; max-width: 180px; font-size: 11px; }
+    .attachment-preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .attachment-chip { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 9px; background: white; font-size: 11px; }
+    .attachment-chip img { width: 38px; height: 38px; border-radius: 5px; object-fit: cover; }
+    .attachment-chip button { border: 0; background: transparent; color: #a22; cursor: pointer; }
+    .message-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+    .message-images img { max-width: 180px; max-height: 160px; border-radius: 8px; }
     .hint { margin: 10px 2px 0; color: #8996a8; font-size: 11px; }
     .error { margin: 12px 2px 0; color: #bd3434; font-size: 12px; }
     .error:empty { display: none; }
@@ -161,6 +169,7 @@
       .context-help { grid-column: auto; }
       .composer { padding: 14px 13px 16px; }
       .composer form { align-items: stretch; flex-direction: column; gap: 9px; }
+      .attachment-picker input { max-width: 100%; }
       .send { align-self: flex-end; min-height: 43px; }
       .message.user .bubble, .message.agent .bubble { max-width: 90%; }
       .availability { padding: 8px 10px; font-size: 11px; }
@@ -208,7 +217,7 @@
                 <path d="M16 27c1.1 1 2.4 1.5 4 1.5s2.9-.5 4-1.5" stroke="white" stroke-width="1.7" stroke-linecap="round"/>
               </svg>
             </div>
-            <div><div class="agent-name">Agente de Soporte TI</div><div class="agent-subtitle">Hermes + Kimi · diagnóstico local con guías seguras</div></div>
+            <div><div class="agent-name">Agente de Soporte TI</div><div class="agent-subtitle">Hermes + modelo configurado · diagnóstico local con guías seguras</div></div>
           </div>
           <label class="user-field" for="user-id">Usuario <input id="user-id" name="user_id" value="usuario-web" maxlength="50" autocomplete="username"></label>
         </div>
@@ -244,8 +253,8 @@
             <label class="context-field" for="affected-scope">Alcance del problema
               <input id="affected-scope" name="affected_scope" maxlength="160" placeholder="Ej.: solo mi equipo">
             </label>
-            <label class="context-field" for="error-message-input">Mensaje de error
-              <input id="error-message-input" name="error_message" maxlength="300" placeholder="No incluyas códigos ni datos privados">
+            <label class="context-field" for="error-message-input">Mensaje o código de error
+              <textarea id="error-message-input" name="error_message" maxlength="1000" rows="3" placeholder="Puedes pegar el código y texto exactos. Oculta nombres, direcciones y datos privados."></textarea>
             </label>
             <label class="context-field" for="recent-changes">Cambios recientes
               <input id="recent-changes" name="recent_changes" maxlength="200" placeholder="Ej.: actualización ayer">
@@ -271,20 +280,24 @@
                 <option value="false">No</option>
               </select>
             </label>
-            <p class="context-help">Las pruebas de red son datos que tú reportas; el agente no ejecuta comprobaciones en este equipo. Nunca introduzcas contraseñas ni códigos MFA.</p>
+            <p class="context-help">Puedes incluir códigos y mensajes de error. Las pruebas de red son datos que tú reportas; el agente no ejecuta comprobaciones. Nunca pegues contraseñas, códigos MFA, tokens ni claves.</p>
           </div>
         </details>
 
         <div class="composer">
           <form id="ask-form">
             <textarea id="question" name="question" rows="1" minlength="5" maxlength="500" required placeholder="Escribe aquí tu problema..." aria-label="Describe tu problema"></textarea>
+            <label class="attachment-picker" for="image-attachments">Adjuntar capturas
+              <input id="image-attachments" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+            </label>
             <button class="send" id="send-button" type="submit">Enviar <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10h13M10 4l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </form>
-          <div class="hint">No compartas contraseñas, códigos de verificación ni datos confidenciales.</div>
+          <div id="attachment-preview" class="attachment-preview" aria-live="polite"></div>
+          <div class="hint">Se aceptan hasta 3 imágenes de 2 MiB cada una. Se envían a Kimi para analizarlas y solo se guardan en un ticket si autorizas la escalación. No compartas contraseñas, códigos MFA ni datos confidenciales.</div>
           <div class="error" id="error-message" role="alert"></div>
         </div>
       </section>
-      <footer>Hermes + Kimi redactan la respuesta; el diagnóstico usa guías locales. No se ejecutan cambios en tu equipo.</footer>
+      <footer>El modelo configurado en Hermes redacta la respuesta; el diagnóstico usa guías locales. No se ejecutan cambios en tu equipo.</footer>
     </main>
   </div>
 
@@ -295,6 +308,8 @@
     const chat = document.getElementById("chat");
     const sendButton = document.getElementById("send-button");
     const errorMessage = document.getElementById("error-message");
+    const imageInput = document.getElementById("image-attachments");
+    const attachmentPreview = document.getElementById("attachment-preview");
     const robotIcon = document.querySelector(".workspace-head .mini-mark").innerHTML;
     const contextInputs = {
       device: document.getElementById("device"),
@@ -309,6 +324,17 @@
       internet_reachable: document.getElementById("internet-check")
     };
     const conversationHistory = [];
+    const selectedImages = [];
+    const conversationImages = [];
+    const maxImages = 3;
+    const maxImageBytes = 2 * 1024 * 1024;
+    const officialDomains = [
+      "microsoft.com", "windows.com", "google.com", "android.com", "apple.com",
+      "dell.com", "hp.com", "lenovo.com", "asus.com", "acer.com", "intel.com",
+      "nvidia.com", "amd.com", "cisco.com", "canon.com", "epson.com",
+      "brother.com", "adobe.com", "mozilla.org", "oracle.com", "sap.com",
+      "vmware.com", "broadcom.com", "zoom.us"
+    ];
 
     userInput.value = localStorage.getItem("soporte-ti-user") || userInput.value;
     userInput.addEventListener("change", () => localStorage.setItem("soporte-ti-user", userInput.value.trim()));
@@ -355,6 +381,124 @@
       chat.append(message);
       chat.scrollTop = chat.scrollHeight;
       return bubble;
+    }
+
+    function renderAttachmentPreview() {
+      attachmentPreview.replaceChildren();
+      selectedImages.forEach((image, index) => {
+        const chip = document.createElement("div");
+        chip.className = "attachment-chip";
+        const thumbnail = document.createElement("img");
+        thumbnail.src = image.data_url;
+        thumbnail.alt = "";
+        const name = document.createElement("span");
+        name.textContent = image.file_name;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "Quitar";
+        remove.setAttribute("aria-label", `Quitar ${image.file_name}`);
+        remove.addEventListener("click", () => {
+          selectedImages.splice(index, 1);
+          renderAttachmentPreview();
+        });
+        chip.append(thumbnail, name, remove);
+        attachmentPreview.append(chip);
+      });
+    }
+
+    function readImage(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.addEventListener("load", () => {
+          if (typeof reader.result !== "string") {
+            reject(new Error(`No se pudo leer ${file.name} como imagen.`));
+            return;
+          }
+          resolve(reader.result);
+        });
+        reader.addEventListener("error", () => reject(new Error(`No se pudo leer ${file.name}.`)));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    imageInput.addEventListener("change", async () => {
+      errorMessage.textContent = "";
+      const newFiles = Array.from(imageInput.files || []);
+      if (conversationImages.length + selectedImages.length + newFiles.length > maxImages) {
+        errorMessage.textContent = "Puedes adjuntar hasta 3 imágenes en esta conversación.";
+        imageInput.value = "";
+        return;
+      }
+      try {
+        const pendingImages = [];
+        for (const file of newFiles) {
+          if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+            throw new Error("Usa imágenes JPG, PNG o WebP.");
+          }
+          if (file.size > maxImageBytes) {
+            throw new Error(`Cada imagen debe pesar como máximo 2 MiB (${file.name}).`);
+          }
+          pendingImages.push({
+            file_name: file.name,
+            content_type: file.type,
+            data_url: await readImage(file)
+          });
+        }
+        selectedImages.push(...pendingImages);
+        renderAttachmentPreview();
+      } catch (error) {
+        renderAttachmentPreview();
+        errorMessage.textContent = error.message;
+      } finally {
+        imageInput.value = "";
+      }
+    });
+
+    function addUserMessage(question, images) {
+      const content = document.createElement("div");
+      const text = document.createElement("div");
+      text.textContent = question;
+      content.append(text);
+      if (images.length) {
+        const gallery = document.createElement("div");
+        gallery.className = "message-images";
+        images.forEach((image) => {
+          const thumbnail = document.createElement("img");
+          thumbnail.src = image.data_url;
+          thumbnail.alt = `Captura adjunta: ${image.file_name}`;
+          gallery.append(thumbnail);
+        });
+        content.append(gallery);
+      }
+      addMessage("user", content);
+    }
+
+    function appendOfficialLinks(parent, text) {
+      const linkPattern = /https:\/\/[^\s<>"']+/gi;
+      let offset = 0;
+      for (const match of text.matchAll(linkPattern)) {
+        const rawUrl = match[0];
+        const cleanUrl = rawUrl.replace(/[.,;:!?)}\]]+$/, "");
+        let host = "";
+        try {
+          host = new URL(cleanUrl).hostname.toLocaleLowerCase();
+        } catch {
+          continue;
+        }
+        if (!officialDomains.some((domain) => host === domain || host.endsWith(`.${domain}`))) {
+          continue;
+        }
+        parent.append(document.createTextNode(text.slice(offset, match.index)));
+        const link = document.createElement("a");
+        link.href = cleanUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = cleanUrl;
+        parent.append(link);
+        parent.append(document.createTextNode(rawUrl.slice(cleanUrl.length)));
+        offset = match.index + rawUrl.length;
+      }
+      parent.append(document.createTextNode(text.slice(offset)));
     }
 
     function renderAnswer(data, pendingTicket) {
@@ -440,13 +584,13 @@
         list.className = "steps";
         steps.forEach((step) => {
           const item = document.createElement("li");
-          item.textContent = step.replace(/^\d+\.\s*/, "");
+          appendOfficialLinks(item, step.replace(/^\d+\.\s*/, ""));
           list.append(item);
         });
         content.append(list);
       } else {
         const paragraph = document.createElement("p");
-        paragraph.textContent = data.answer;
+        appendOfficialLinks(paragraph, data.answer);
         content.append(paragraph);
       }
 
@@ -473,7 +617,7 @@
         const title = document.createElement("h3");
         title.textContent = "Antes de enviar el caso al técnico";
         const privacy = document.createElement("p");
-        privacy.textContent = "No encontramos una guía suficiente con la información disponible. ¿Quieres contactar al técnico para continuar? Recibirá la descripción, la conversación y tus datos de contacto. No se enviará nada hasta que confirmes abajo.";
+        privacy.textContent = "No encontramos una guía suficiente después de recopilar más información. ¿Quieres contactar al técnico para continuar? Recibirá la descripción, la conversación y tus datos de contacto. Las capturas adjuntas se guardarán en el ticket y estarán disponibles en el panel; no se adjuntan al correo. No se enviará nada hasta que confirmes abajo.";
         contactForm.append(title, privacy);
 
         const fieldGrid = document.createElement("div");
@@ -507,7 +651,7 @@
         consent.type = "checkbox";
         consent.required = true;
         const consentText = document.createElement("span");
-        consentText.textContent = "Sí, autorizo crear el ticket y compartir con el técnico mi descripción, conversación y datos de contacto. Recibiré una copia del correo.";
+        consentText.textContent = "Sí, autorizo crear el ticket y compartir con el técnico mi descripción, conversación, datos de contacto y capturas adjuntas. Recibiré una copia del correo; las imágenes no se adjuntan al correo.";
         consentLabel.append(consent, consentText);
         const status = document.createElement("p");
         status.className = "ticket-submit-status";
@@ -577,10 +721,11 @@
 
       const submittedContext = collectContext();
       const submittedHistory = conversationHistory.slice(-10);
-      addMessage("user", question);
+      const submittedImages = selectedImages.slice();
+      addUserMessage(question, submittedImages);
       questionInput.value = "";
       sendButton.disabled = true;
-      const loading = addMessage("agent", "Consultando Hermes + Kimi y las guías de soporte...", "typing");
+      const loading = addMessage("agent", "Consultando Hermes y las guías de soporte...", "typing");
       try {
         const response = await fetch("/agent/chat", {
           method: "POST",
@@ -589,7 +734,8 @@
             question,
             user_id: userId,
             context: submittedContext,
-            history: submittedHistory
+            history: submittedHistory,
+            attachments: submittedImages
           })
         });
         const data = await response.json();
@@ -602,12 +748,16 @@
           { role: "user", content: question },
           { role: "assistant", content: data.answer }
         );
+        conversationImages.push(...submittedImages);
+        selectedImages.splice(0, selectedImages.length);
+        renderAttachmentPreview();
         if (conversationHistory.length > 10) conversationHistory.splice(0, conversationHistory.length - 10);
         renderAnswer(data, {
           question,
           user_id: userId,
           context: submittedContext,
-          history: submittedHistory
+          history: submittedHistory,
+          attachments: conversationImages
         });
       } catch (error) {
         if (loading.parentElement.isConnected) loading.parentElement.remove();

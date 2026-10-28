@@ -2,10 +2,14 @@
 
 **Un asistente de soporte TI que convierte incidencias comunes en pasos claros y seguros.**
 
-**Version 1.3.4:** Hermes y el modelo configurado (Kimi, si así está
-seleccionado) participan en cada turno del chat; el usuario autoriza la
-escalación antes del correo y recibe una copia.
-Consulta las [notas 1.3.4](docs/version-1.3.4.md), las
+**Versión actual: 1.3.7.** El chat puede hacer preguntas de seguimiento,
+consultar documentación oficial y analizar capturas antes de escalar un caso.
+La versión 1.3.5 incorporó el envío por Gmail API con la firma configurada en
+Gmail; la 1.3.6 mejoró la gestión local de tickets. Consulta las
+[notas 1.3.7](docs/version-1.3.7.md), las
+[notas 1.3.6](docs/version-1.3.6.md), las
+[notas 1.3.5](docs/version-1.3.5.md), las
+[notas 1.3.4](docs/version-1.3.4.md),
 [notas 1.3.3](docs/version-1.3.3.md), las
 [notas 1.3.2](docs/version-1.3.2.md), las
 [notas 1.3.1](docs/version-1.3.1.md) y las
@@ -13,7 +17,7 @@ Consulta las [notas 1.3.4](docs/version-1.3.4.md), las
 
 Describe el problema; SoporteTI-Agent busca una guía local, devuelve recomendaciones con su fuente y, cuando no encuentra una respuesta, solicita revisión humana en lugar de inventar una solución.
 
-> **Estado actual:** el diagnóstico local es determinista y se basa en palabras clave y una base de conocimiento versionada. El chat web usa el Hermes CLI instalado localmente para redactar respuestas con el modelo configurado allí (Kimi, en la configuración recomendada); la API de diagnóstico local sigue disponible sin Hermes.
+> **Estado actual:** el diagnóstico local es determinista y se basa en palabras clave y una base de conocimiento versionada. El chat web usa el Hermes CLI instalado localmente para redactar respuestas con el modelo configurado en Hermes; la API de diagnóstico local sigue disponible sin Hermes.
 
 ## ✨ ¿Qué puede hacer?
 
@@ -22,6 +26,8 @@ Describe el problema; SoporteTI-Agent busca una guía local, devuelve recomendac
 - 🧑‍💻 Aceptar contexto opcional del equipo, como dispositivo y sistema operativo.
 - 🧪 Proponer hipótesis provisionales y pruebas de descarte a partir de las guías y de comprobaciones de red reportadas por el usuario.
 - ❓ Preguntar por sistema operativo, alcance, mensaje de error y cambios recientes cuando falten esos datos.
+- 🖼️ Analizar hasta tres capturas de pantalla y leer códigos de error visibles.
+- 🌐 Consultar documentación oficial en la web cuando las guías locales no basten.
 - 🙋 Pedir nombre, correo y teléfono antes de crear y notificar un ticket sin guía.
 - 📋 Permitir al técnico revisar tickets locales, registrar una nota y marcarlos resueltos.
 - 🔌 Ofrecer diagnóstico local mediante API HTTP, AWS Lambda o MCP; el chat web puede redactar la respuesta mediante Hermes y el modelo configurado en la estación.
@@ -99,28 +105,35 @@ Una respuesta con guía incluye los pasos, su fuente y si necesita aprobación:
 La solicitud requiere `question` (5–500 caracteres) y `user_id` (3–50 caracteres); `context` es opcional. El contrato completo está en [docs/api-contract.md](docs/api-contract.md), y hay ejemplos en [data/agent_request.json](data/agent_request.json) y [data/agent_response.json](data/agent_response.json).
 
 En la interfaz web, abre **Datos para afinar el diagnóstico (opcional)** para
-indicar el sistema operativo, el alcance, el mensaje de error, los cambios
-recientes y, si ya los comprobaste, los resultados de red. Esos resultados se
-envían como datos declarados por ti; el agente no ejecuta pruebas en tu equipo.
+indicar el sistema operativo, el alcance, el mensaje o código de error y los
+cambios recientes. También puedes adjuntar hasta tres capturas JPG, PNG o WebP
+(máximo 2 MiB cada una). Oculta antes cualquier dato personal o confidencial.
+El agente puede hacer preguntas de seguimiento para reunir información; solo
+tras varias respuestas sin una guía suficiente ofrece el formulario para
+contactar al técnico, salvo que lo solicites directamente.
 
-El chat web envía la incidencia y el diagnóstico local al Hermes CLI de WSL,
-que utiliza el proveedor/modelo configurado en Hermes para redactar la
-respuesta. En la configuración recomendada, ese modelo es Kimi. Hermes debe
-estar instalado y autenticado en WSL. La API key permanece en Hermes y no se
-envía al navegador. Si Hermes o Kimi no están disponibles, el chat muestra un
-error explícito en lugar de fingir una respuesta de Kimi. El endpoint
+El chat web envía la incidencia, el contexto y el diagnóstico local al Hermes
+CLI de WSL, que utiliza el proveedor/modelo configurado en Hermes para redactar
+la respuesta. En la configuración recomendada, ese modelo es Kimi, pero Hermes
+puede usar otro proveedor compatible. Hermes debe estar instalado y
+autenticado en WSL. Las credenciales permanecen en Hermes y no se envían al
+navegador. Si Hermes o el proveedor configurado no están disponibles, el chat
+muestra un error explícito en lugar de fingir una respuesta. El endpoint
 determinista `POST /agent/ask` sigue disponible para clientes que no requieren
 el modelo.
 
-Cuando no hay una guia suficiente, Hermes consulta al modelo configurado para
-redactar la respuesta y el chat pregunta si se desea contactar al técnico.
+Cuando no hay una guía suficiente, Hermes puede buscar documentación oficial
+con enlaces y redactar pasos seguros; las capturas se analizan con la
+herramienta de visión. El chat pregunta si se desea contactar al técnico.
 Solo tras marcar la autorización y enviar nombre, correo y teléfono se guarda
-un ticket y se intenta notificarlo; el correo incluye al usuario en copia. En
-SQLite el numero tiene formato
-`STI-AAAAMMDD-######`; en Firebase, `STI-AAAAMMDD-<UUID>`. El seguimiento esta en
-`http://127.0.0.1:8000/tickets`; alli se puede anotar la solucion y marcar el
-caso resuelto. Configura Gmail SMTP en `.env` con una contrasena de aplicacion.
-Consulta [las notas 1.3.4](docs/version-1.3.4.md).
+un ticket y se intenta notificarlo; el correo incluye al usuario en copia y
+usa la firma configurada en Gmail cuando Gmail API OAuth está autorizado. En
+SQLite el número tiene formato
+`STI-AAAAMMDD-######`; en Firebase, `STI-AAAAMMDD-<UUID>`. El seguimiento está
+en `http://127.0.0.1:8000/tickets`; allí se puede anotar la solución y marcar el
+caso resuelto. El panel incluye búsqueda, filtros por estado, resumen de casos,
+diagnóstico y conversación. Configura Gmail API OAuth para enviar con la firma
+que ya tienes en Gmail; consulta [las notas 1.3.5](docs/version-1.3.5.md).
 
 ### Persistencia Firebase Data Connect (opcional)
 
@@ -174,7 +187,7 @@ no la disponibilidad de Firebase.
 
 | Modalidad | Qué ofrece | Documentación |
 | --- | --- | --- |
-| **Chat local + Hermes/Kimi** | `POST /agent/chat` obtiene el diagnóstico local y Hermes/Kimi redacta la respuesta. Requiere Hermes configurado en WSL; solo loopback. | [Guía técnica](docs/guia-tecnica-hermes-kimi.md) |
+| **Chat local + Hermes** | `POST /agent/chat` obtiene el diagnóstico local; Hermes redacta la respuesta, puede buscar documentación web oficial y habilita visión al recibir capturas. No tiene terminal y solo acepta loopback. | [Guía técnica](docs/guia-tecnica-hermes-kimi.md) |
 | **API de diagnóstico local** | FastAPI expone `GET /health` y `POST /agent/ask`, sin invocar un LLM. | [Contrato HTTP](docs/api-contract.md) |
 | **Hermes + MCP** | Hermes puede consultar la herramienta local `consultar_soporte_ti` en sesiones propias. | [Guía técnica](docs/guia-tecnica-hermes-kimi.md) · [Guía para usuarios](docs/guia-usuario-hermes-kimi.md) |
 | **AWS Lambda + API Gateway** | Despliegue con AWS SAM y los mismos endpoints HTTP. | [template.yaml](template.yaml) |
@@ -193,22 +206,24 @@ El script construye y despliega el stack, y muestra la URL de la API al finaliza
 1. Se validan la pregunta, el identificador de usuario y el contexto opcional.
 2. Se buscan coincidencias completas normalizadas en [data/conocimiento_soporte.json](data/conocimiento_soporte.json); los artículos se cargan una vez y las coincidencias se ordenan por puntuación heurística.
 3. Si hay una guía, se devuelven hasta tres fuentes, hipótesis provisionales, evidencias textuales y pasos recomendados.
-4. Si faltan datos, la respuesta propone preguntas sobre sistema operativo, alcance, error y cambios recientes.
+4. Si faltan datos, el chat puede recabar hasta dos aclaraciones antes de ofrecer escalar el caso; una petición directa de contactar al técnico adelanta el formulario.
 5. Si el usuario incluye `context.network_checks`, el agente interpreta esos valores como resultados declarados, sin ejecutar pruebas en su equipo.
-6. Si no hay coincidencia, el chat pide datos de contacto; el ticket y el correo se crean solo cuando el usuario confirma el formulario.
+6. Si no hay coincidencia suficiente, Hermes puede buscar documentación oficial y analizar capturas adjuntas. El ticket y el correo solo se crean después de que el usuario comparte sus datos y autoriza la escalación.
 
-La API, Lambda, MCP y el chat web comparten la misma lógica determinista de diagnóstico. La persistencia y el aviso por correo de esta versión aplican a los endpoints HTTP locales; no a Lambda ni a MCP. El chat web usa Hermes/Kimi para redactar, pero no delega el diagnóstico al modelo ni le habilita herramientas de ejecución. Consulta el [mapa de arquitectura](docs/arquitectura.md) y la [matriz de componentes y verificación](docs/reporte-matriz-v0.1.md) para más detalle.
+La API, Lambda, MCP y el chat web comparten la lógica determinista de diagnóstico. La persistencia de tickets, el correo Gmail y el panel se aplican al servidor HTTP local, no a Lambda ni a MCP. El chat usa Hermes para redactar y, según el caso, consultar la web y leer capturas; no habilita terminal ni ejecución de comandos. Consulta el [mapa de arquitectura](docs/arquitectura.md), el [contrato actual de API](docs/api-contract.md) y la [matriz histórica v0.1](docs/reporte-matriz-v0.1.md).
 
 ## 🔒 Límites y seguridad
 
 - El agente **recomienda**, pero no ejecuta comandos ni modifica el equipo; los resultados de `network_checks` no se verifican desde el servidor.
 - No instala software ni cambia contraseñas. Los tickets solo se crean cuando no hay guía y se guardan en SQLite (predeterminado) o, si se configura, en Firebase Data Connect; no se envían a una mesa de servicio externa.
-- El correo requiere una contraseña de aplicación Gmail en el `.env` local. El secreto nunca se almacena en la base de tickets ni debe incluirse en el repositorio.
+- El correo requiere credenciales OAuth de Gmail API guardadas localmente en `.secrets/`; no deben incluirse en el repositorio.
 - El ticket conserva la conversación, el texto de la consulta y los datos de contacto en el backend seleccionado. Protege la base SQLite o el proyecto Firebase y no incluyas credenciales ni datos confidenciales en el chat.
 - El panel de seguimiento contiene datos personales y solo está protegido por acceso loopback; úsalo únicamente en un equipo local de confianza. No ofrece autenticación de técnicos.
-- La base de conocimiento está versionada localmente; el backend no consulta Kimi ni servicios externos para diagnosticar.
+- La base de conocimiento está versionada localmente. El diagnóstico estructurado no consulta servicios externos; la búsqueda web solo está disponible en el chat Hermes.
 - El chat web envía la pregunta, el resultado local de diagnóstico y hasta diez turnos previos al modelo configurado en Hermes. El historial vive solo en la memoria de la página y se pierde al recargar.
-- Hermes se invoca sin herramientas para la ruta web: Kimi solo redacta a partir del resultado local; no ejecuta comandos ni invoca herramientas MCP desde esa ruta.
+- Hermes puede usar la búsqueda web acotada; cuando hay capturas también se activa visión. La ruta web no habilita terminal ni ejecución de comandos.
+- La pregunta, el contexto, el historial y las capturas del turno se envían al proveedor configurado mediante Hermes. No incluyas información confidencial en el chat ni en las capturas.
+- Las imágenes se conservan en el ticket solo después del consentimiento para escalar el caso; se muestran en el panel local y no se adjuntan al correo.
 - La búsqueda no es semántica y las cifras de confianza no están calibradas clínicamente ni estadísticamente; expresan solo la fuerza relativa de la coincidencia.
 - No incluyas contraseñas, códigos de verificación, claves API ni información confidencial en las solicitudes.
 - La API no implementa autenticación. Protege el acceso antes de cualquier despliegue accesible por otras personas.

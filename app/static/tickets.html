@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Seguimiento de tickets | Soporte TI</title>
   <style>
-    :root { color-scheme: light; --ink: #15243a; --muted: #718096; --blue: #2868e8; --line: #e5eaf2; --surface: #fff; --canvas: #f5f7fb; }
+    :root { color-scheme: light; --ink: #15243a; --muted: #718096; --blue: #2868e8; --line: #e5eaf2; --surface: #fff; --canvas: #f5f7fb; --green: #167347; --red: #b42318; }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--canvas); color: var(--ink); font-family: "Segoe UI", Arial, sans-serif; }
     main { width: min(1050px, calc(100% - 32px)); margin: 36px auto; }
@@ -13,9 +13,16 @@
     h1 { margin: 0 0 6px; font-size: 28px; }
     header p { margin: 0; color: var(--muted); }
     a { color: var(--blue); text-decoration: none; font-weight: 650; }
-    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
-    select, button, textarea { font: inherit; }
-    select, textarea { border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; background: white; color: var(--ink); }
+    .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .stat { padding: 15px 17px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+    .stat strong { display: block; font-size: 24px; }
+    .stat span { color: var(--muted); font-size: 12px; }
+    .toolbar { display: flex; justify-content: space-between; align-items: end; gap: 12px; margin-bottom: 16px; }
+    .filters { display: flex; align-items: end; flex: 1; gap: 12px; }
+    .filters label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+    select, input, button, textarea { font: inherit; }
+    select, input, textarea { border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; background: white; color: var(--ink); }
+    input { width: min(390px, 100%); }
     button { border: 0; border-radius: 8px; padding: 9px 12px; background: var(--blue); color: white; font-weight: 650; cursor: pointer; }
     button:disabled { opacity: .6; cursor: wait; }
     #tickets { display: grid; gap: 14px; }
@@ -24,10 +31,18 @@
     .ticket h2 { margin: 0; font-size: 17px; }
     .status { padding: 5px 9px; border-radius: 999px; background: #fff3d8; color: #825c00; font-size: 12px; font-weight: 700; white-space: nowrap; }
     .status.resolved { background: #e5f7ee; color: #167347; }
+    .email-status { font-weight: 650; }
+    .email-status.sent { color: var(--green); }
+    .email-status.failed { color: var(--red); }
     .meta, .muted { color: var(--muted); font-size: 13px; }
     .description { margin: 12px 0; white-space: pre-wrap; }
+    pre { overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
     .contact { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 11px; border-radius: 9px; background: #f8faff; font-size: 13px; overflow-wrap: anywhere; }
     .contact strong { display: block; margin-bottom: 3px; color: var(--muted); font-size: 11px; }
+    .attachments { display: flex; flex-wrap: wrap; gap: 12px; }
+    .attachment { margin: 0; max-width: 220px; }
+    .attachment img { display: block; max-width: 220px; max-height: 180px; border-radius: 8px; border: 1px solid var(--line); }
+    .attachment figcaption { margin-top: 5px; overflow-wrap: anywhere; font-size: 12px; }
     details { margin-top: 12px; color: #40516a; font-size: 13px; }
     details summary { cursor: pointer; font-weight: 650; }
     .conversation { margin: 8px 0; padding-left: 20px; white-space: pre-wrap; }
@@ -39,6 +54,9 @@
     @media (max-width: 650px) {
       main { margin-top: 22px; }
       header { align-items: start; flex-direction: column; }
+      .stats { grid-template-columns: 1fr; }
+      .toolbar, .filters { align-items: stretch; flex-direction: column; }
+      input { width: 100%; }
       .contact { grid-template-columns: 1fr; }
       .resolve-form { align-items: stretch; flex-direction: column; }
     }
@@ -53,14 +71,24 @@
       </div>
       <a href="/">Volver al chat</a>
     </header>
+    <section class="stats" aria-label="Resumen de tickets">
+      <article class="stat"><strong id="total-count">0</strong><span>Tickets registrados</span></article>
+      <article class="stat"><strong id="open-count">0</strong><span>Pendientes de atención</span></article>
+      <article class="stat"><strong id="resolved-count">0</strong><span>Resueltos</span></article>
+    </section>
     <div class="toolbar">
-      <label for="filter">Mostrar
-        <select id="filter">
-          <option value="all">Todos</option>
-          <option value="open">Abiertos</option>
-          <option value="resolved">Resueltos</option>
-        </select>
-      </label>
+      <div class="filters">
+        <label for="search">Buscar ticket, usuario o contacto
+          <input id="search" type="search" placeholder="Ej. STI-20261027 o nombre">
+        </label>
+        <label for="filter">Estado
+          <select id="filter">
+            <option value="all">Todos</option>
+            <option value="open">Abiertos</option>
+            <option value="resolved">Resueltos</option>
+          </select>
+        </label>
+      </div>
       <button id="refresh" type="button">Actualizar</button>
     </div>
     <div id="message" class="muted" role="status"></div>
@@ -70,6 +98,7 @@
     const list = document.getElementById("tickets");
     const message = document.getElementById("message");
     const filter = document.getElementById("filter");
+    const search = document.getElementById("search");
     let tickets = [];
 
     function addText(parent, tag, text, className = "") {
@@ -82,9 +111,21 @@
 
     function render() {
       list.replaceChildren();
-      const visible = tickets.filter((ticket) => filter.value === "all" || ticket.status === filter.value);
+      const query = search.value.trim().toLocaleLowerCase();
+      const visible = tickets.filter((ticket) => {
+        const matchesStatus = filter.value === "all" || ticket.status === filter.value;
+        const searchable = [
+          ticket.ticket_number,
+          ticket.category,
+          ticket.user_id,
+          ticket.contact_name,
+          ticket.contact_email,
+          ticket.description
+        ].join(" ").toLocaleLowerCase();
+        return matchesStatus && (!query || searchable.includes(query));
+      });
       if (!visible.length) {
-        addText(list, "p", "No hay tickets para mostrar.", "empty");
+        addText(list, "p", tickets.length ? "No hay tickets que coincidan con la búsqueda y el filtro." : "Aún no hay tickets registrados.", "empty");
         return;
       }
       visible.forEach((ticket) => {
@@ -99,7 +140,8 @@
         badge.textContent = ticket.status === "resolved" ? "Resuelto" : "Abierto";
         head.append(heading, badge);
         card.append(head);
-        addText(card, "p", `Creado: ${new Date(ticket.created_at).toLocaleString()} · Usuario indicado: ${ticket.user_id} · Prioridad: ${ticket.priority} · Correo: ${ticket.email_status}`, "meta");
+        addText(card, "p", `Creado: ${new Date(ticket.created_at).toLocaleString()} · Usuario indicado: ${ticket.user_id} · Prioridad: ${ticket.priority}`, "meta");
+        addText(card, "p", `Estado del correo: ${ticket.email_status}`, `meta email-status ${ticket.email_status}`);
         addText(card, "p", ticket.description, "description");
 
         const contact = document.createElement("div");
@@ -111,6 +153,35 @@
           contact.append(item);
         });
         card.append(contact);
+
+        if (ticket.attachments?.length) {
+          const attachmentDetails = document.createElement("details");
+          addText(attachmentDetails, "summary", `Ver capturas adjuntas (${ticket.attachments.length})`);
+          const gallery = document.createElement("div");
+          gallery.className = "attachments";
+          ticket.attachments.forEach((attachment) => {
+            const figure = document.createElement("figure");
+            figure.className = "attachment";
+            const imageUrl = `/api/tickets/${encodeURIComponent(ticket.ticket_number)}/attachments/${encodeURIComponent(attachment.id)}`;
+            const image = document.createElement("img");
+            image.src = imageUrl;
+            image.alt = attachment.file_name;
+            const caption = document.createElement("figcaption");
+            caption.textContent = `${attachment.file_name} · ${Math.ceil(attachment.size / 1024)} KiB`;
+            figure.append(image, caption);
+            gallery.append(figure);
+          });
+          attachmentDetails.append(gallery);
+          card.append(attachmentDetails);
+        }
+
+        const diagnosisDetails = document.createElement("details");
+        addText(diagnosisDetails, "summary", "Ver diagnóstico y contexto");
+        addText(diagnosisDetails, "p", ticket.diagnosis || "Sin diagnóstico registrado.");
+        if (ticket.context && Object.keys(ticket.context).length) {
+          addText(diagnosisDetails, "pre", JSON.stringify(ticket.context, null, 2));
+        }
+        card.append(diagnosisDetails);
 
         const conversationDetails = document.createElement("details");
         addText(conversationDetails, "summary", "Ver conversación");
@@ -167,20 +238,27 @@
     async function loadTickets() {
       message.className = "muted";
       message.textContent = "Cargando tickets...";
+      document.getElementById("refresh").disabled = true;
       try {
         const response = await fetch("/api/tickets");
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || "No se pudieron cargar los tickets.");
         tickets = result;
-        message.textContent = `${tickets.length} ticket(s).`;
+        document.getElementById("total-count").textContent = tickets.length;
+        document.getElementById("open-count").textContent = tickets.filter((ticket) => ticket.status === "open").length;
+        document.getElementById("resolved-count").textContent = tickets.filter((ticket) => ticket.status === "resolved").length;
+        message.textContent = `${tickets.length} ticket(s) cargados.`;
         render();
       } catch (error) {
         message.className = "error";
         message.textContent = error instanceof TypeError ? "No se pudo conectar con el servicio." : error.message;
+      } finally {
+        document.getElementById("refresh").disabled = false;
       }
     }
 
     filter.addEventListener("change", render);
+    search.addEventListener("input", render);
     document.getElementById("refresh").addEventListener("click", loadTickets);
     loadTickets();
   </script>

@@ -5,6 +5,14 @@ expone el diagnostico existente como una herramienta MCP local. La clave de Kimi
 se configura solamente en Hermes; no se envia a SoporteTI-Agent ni se guarda en
 este repositorio.
 
+Esta guia cubre la integracion MCP interactiva. El chat web local es otra
+superficie: desde la version 1.3.7 puede usar web y vision de Hermes, hace
+aclaraciones y conserva capturas en tickets autorizados. Revisa la
+[guia tecnica actualizada](guia-tecnica-hermes-kimi.md) y las
+[notas 1.3.7](version-1.3.7.md) para ese flujo. La API Gmail y el panel local
+se documentan en las [notas 1.3.5](version-1.3.5.md) y
+[notas 1.3.6](version-1.3.6.md).
+
 ## 1. Preparar Hermes y Kimi
 
 La ruta recomendada es Hermes en Ubuntu/WSL2 y la API global de Kimi. Sigue la

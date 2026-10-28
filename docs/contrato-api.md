@@ -1,100 +1,40 @@
-# Contrato de la API v1.3.0
+# Contrato de la API v1.3.7
 
-## `GET /health`
+Este archivo conserva la ruta de documentación utilizada en versiones
+anteriores. El contrato completo y vigente, incluidos esquemas, ejemplos,
+validaciones y estados HTTP, está centralizado en
+[api-contract.md](api-contract.md).
 
-No recibe cuerpo y responde `200`:
+## Endpoints actuales
 
-```json
-{"status": "ok"}
-```
+| Método y ruta | Función | Acceso |
+| --- | --- | --- |
+| `GET /health` | Comprueba que la API responde. | API local o despliegue configurado |
+| `POST /agent/ask` | Diagnóstico determinista con la base de conocimiento local. | API |
+| `POST /agent/chat` | Diagnóstico local y respuesta de Hermes; web oficial cuando hace falta y visión si hay capturas. | Solo loopback |
+| `POST /agent/tickets` | Crea y notifica un ticket sin guía después de obtener datos de contacto y consentimiento. | Solo loopback |
+| `GET /tickets` | Interfaz local de seguimiento y gestión. | Solo loopback |
+| `GET /api/tickets` | Lista tickets y metadatos de adjuntos, sin incluir bytes de imagen. | Solo loopback |
+| `GET /api/tickets/{ticket_number}/attachments/{attachment_id}` | Sirve una captura guardada en el ticket. | Solo loopback |
+| `POST /api/tickets/{ticket_number}/resolve` | Guarda nota y marca el ticket como resuelto. | Solo loopback |
 
-## `POST /agent/ask`
+## Cambios de la versión 1.3.5
 
-Busca guias locales, plantea hipotesis y pruebas provisionales, y solicita los
-datos faltantes o revision humana.
+Las notificaciones de ticket usan Gmail API OAuth. La firma de la cuenta
+remitente se consulta en Gmail y se agrega al correo. Consulta las
+[notas de versión 1.3.5](version-1.3.5.md) para los requisitos, el archivo OAuth
+local, la autorización y los permisos.
 
-### Entrada
+## Cambios posteriores
 
-```json
-{
-  "question": "No tengo internet en mi portatil",
-  "user_id": "USR-1042",
-  "context": {
-    "device": "portatil",
-    "operating_system": "Windows 11"
-  }
-}
-```
+- **1.3.6:** el panel local incorpora búsqueda, filtros, conteos y acceso al
+  diagnóstico y contexto del ticket. Consulta las
+  [notas 1.3.6](version-1.3.6.md).
+- **1.3.7:** el chat puede recopilar aclaraciones, consultar documentación web
+  oficial y analizar capturas. Los adjuntos solo se conservan en el ticket tras
+  el consentimiento; no se envían por correo. Consulta las
+  [notas 1.3.7](version-1.3.7.md).
 
-| Campo | Tipo | Obligatorio | Uso |
-| --- | --- | --- | --- |
-| `question` | texto | Si | Problema de soporte, entre 5 y 500 caracteres. |
-| `user_id` | texto | Si | Identificador declarado por el cliente; no autentica al usuario. |
-| `context` | objeto | No | Datos del equipo, alcance, error, cambios recientes o pruebas reportadas. |
-
-### Respuesta `200`
-
-```json
-{
-  "answer": "Para portatil: 1. Verifica si otro dispositivo puede conectarse a la misma red.",
-  "sources": ["kb_internet_001"],
-  "needs_approval": false,
-  "next_action": "recopilar_datos",
-  "incident_id": null,
-  "category": "redes",
-  "priority": "normal",
-  "diagnosis": {
-    "summary": "La descripcion coincide con un problema de conectividad de red o Internet. La causa raiz aun no esta confirmada.",
-    "hypotheses": [
-      {
-        "cause": "Problema de conectividad de red o Internet",
-        "confidence": 0.59,
-        "sources": ["kb_internet_001"],
-        "rationale": "Coincidencia heuristica de palabras clave; no confirma la causa.",
-        "tests": ["Compara el resultado con otro equipo de la misma red."]
-      }
-    ],
-    "tests": ["Comprueba si otros dispositivos tienen conectividad."]
-  },
-  "evidence": ["Palabra clave coincidente: internet"],
-  "confidence": 0.59,
-  "recommended_actions": ["Verifica si otro dispositivo puede conectarse a la misma red."],
-  "escalation_reason": null,
-  "follow_up_questions": ["¿Que sistema operativo y version utilizas?"]
-}
-```
-
-La respuesta contiene `incident_id` (actualmente `null`), `category`,
-`priority`, `diagnosis` (resumen, hipotesis y pruebas), `evidence`,
-`confidence`, `recommended_actions`, `escalation_reason` y
-`follow_up_questions`, ademas de `answer`, `sources`, `needs_approval` y
-`next_action`. La confianza es heuristica y refleja coincidencia con guias; no
-es una probabilidad calibrada ni confirma la causa raiz.
-
-### Contexto opcional
-
-`context` puede contener `device`, `operating_system`, `affected_scope`,
-`error_message`, `recent_changes` y `network_checks`. Este ultimo puede incluir
-los booleanos `gateway_reachable`, `dns_resolution` e `internet_reachable`;
-son resultados proporcionados por el usuario, no pruebas ejecutadas o
-verificadas por el servidor.
-
-### Respuesta de caso sin guia
-
-La API prepara solo un borrador en memoria y devuelve `needs_approval: true`,
-`next_action: "borrador_pendiente_aprobacion"` y el motivo en
-`escalation_reason`. No se asigna `incident_id` ni se persiste un ticket.
-
-### Errores
-
-| Estado | Significado |
-| --- | --- |
-| `400` | JSON invalido, campo obligatorio ausente o tipo incorrecto. |
-| `500` | Fallo interno no controlado. |
-
-## Limites
-
-El agente no autentica `user_id`, no persiste incidencias, no ejecuta comandos,
-instala software, cambia contrasenas, modifica configuraciones criticas,
-elimina archivos ni envia tickets automaticamente. Las acciones de cambio
-requieren intervencion o aprobacion humana.
+La lógica determinista compartida no ejecuta comandos ni modifica equipos.
+El panel y las rutas de tickets no autentican técnicos; mantenlos en loopback
+y en equipos de confianza.

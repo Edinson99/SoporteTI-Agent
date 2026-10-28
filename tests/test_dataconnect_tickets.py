@@ -1,3 +1,4 @@
+import base64
 import json
 import subprocess
 from datetime import datetime, timezone
@@ -66,7 +67,7 @@ def _row(request_id=REQUEST_ID, status="open", email_status="sent"):
 
 
 def test_crea_ticket_atomico_con_mensajes_y_auditoria(monkeypatch):
-    monkeypatch.setenv("SMTP_APP_PASSWORD", "")
+    monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", "")
     calls = []
 
     def execute(operation, variables):
@@ -105,6 +106,70 @@ def test_crea_ticket_atomico_con_mensajes_y_auditoria(monkeypatch):
     ]
     assert len(create_call[1]["events"]) == 2
     assert calls[1][0] == "update_email_status"
+
+
+def test_adjuntos_data_connect_se_guardan_y_se_ocultan_de_la_lista(monkeypatch):
+    image = b"\x89PNG\r\n\x1a\n" + b"firebase-image-bytes"
+    attachment_id = "55038ee8-92a5-4db4-b4b2-965983e367de"
+    calls = []
+
+    def execute(operation, variables):
+        calls.append((operation, variables))
+        return {}
+
+    service = _service(monkeypatch, execute)
+    monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", "")
+    service.create_ticket(
+        request_id=REQUEST_ID,
+        question="La aplicacion interna se cierra al iniciar",
+        user_id="USR-1042",
+        category="software",
+        priority="normal",
+        diagnosis="No hay guia.",
+        context={"operating_system": "Windows 11"},
+        history=[],
+        contact_name="Javier Perez",
+        contact_email="javier@example.com",
+        contact_phone="+57 300 123 4567",
+        attachments=[
+            {
+                "id": attachment_id,
+                "file_name": "error.png",
+                "content_type": "image/png",
+                "data": image,
+            }
+        ],
+    )
+    ticket_data = calls[0][1]["ticket"]
+    stored_metadata = json.loads(ticket_data["contextJson"])
+    assert base64.b64decode(
+        stored_metadata["attachments"][0]["data_base64"]
+    ) == image
+
+    row = _row()
+    row["createdAt"] = ticket_data["createdAt"]
+    row["contextJson"] = ticket_data["contextJson"]
+    ticket = FirebaseDataConnectTicketService._to_ticket(row)
+    assert ticket["attachments"] == [
+        {
+            "id": attachment_id,
+            "file_name": "error.png",
+            "content_type": "image/png",
+            "size": len(image),
+        }
+    ]
+    assert "data_base64" not in ticket["context_json"]
+
+    monkeypatch.setattr(
+        service,
+        "_execute",
+        lambda operation, variables: {"ticket": row}
+        if operation == "get_ticket"
+        else {},
+    )
+    attachment = service.get_attachment(ticket["ticket_number"], attachment_id)
+    assert attachment is not None
+    assert attachment["data"] == image
 
 
 def test_reintento_idempotente_devuelve_ticket_sin_reenviar_correo(monkeypatch):

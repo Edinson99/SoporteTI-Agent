@@ -47,29 +47,22 @@ local de confianza y no expongas el servidor en una red compartida.
 
 ## Configuracion local del correo
 
-El remitente predeterminado es `soporteitelectiva@gmail.com` y el destinatario
-es `javiercito9456@gmail.com`. Para activar el envio:
+Define `GMAIL_SENDER` y `GMAIL_TO_EMAIL` en `.env` con direcciones de ejemplo
+o con las direcciones autorizadas de tu organización. Para activar el envío:
 
-1. Crea una contrasena de aplicacion desde la seguridad de la cuenta Google
-   remitente; no uses ni compartas la contraseña normal de Gmail.
-2. Copia los valores SMTP del archivo `.env.example` a tu `.env` local si aun no
-   existen. El script de configuracion crea `.env` una sola vez; si ya existe,
-   agregalos manualmente sin sobrescribir tus otros valores.
-3. Completa `SMTP_APP_PASSWORD` en `.env`. No publiques ese archivo ni pegues la
-   clave en el chat o en una solicitud.
-4. Reinicia `.\scripts\start.ps1` y prueba una consulta que no coincida con una
-   guia; el correo se intenta enviar despues de confirmar los datos de
-   contacto.
-
-Se usa `smtp.gmail.com:587` con STARTTLS. Sin contraseña de aplicacion, el
-ticket igualmente se conserva y la interfaz indica que el correo no esta
-configurado. Ante un error de envio, el ticket queda guardado y se informa el
-fallo.
+La configuracion SMTP descrita originalmente en esta version fue reemplazada
+en la version 1.3.5 por Gmail API OAuth, que añade la firma configurada en Gmail.
+Consulta [las notas 1.3.5](version-1.3.5.md) para configurar la API y autorizar
+la cuenta. Si falta el token OAuth, el ticket igualmente se conserva y la
+interfaz indica que el correo no esta configurado. Ante un error de envio, el
+ticket queda guardado y se informa el fallo.
 
 ## Privacidad y limites
 
 El correo contiene el texto de la consulta, el usuario indicado, los datos de
-contacto, categoria, prioridad, contexto y conversacion disponible. No incluyas
+contacto, categoria, prioridad, contexto y conversacion disponible. Las
+capturas que se agregan en la version 1.3.7 se conservan en el ticket tras la
+autorizacion y no se adjuntan al correo. No incluyas
 contraseñas, codigos MFA, claves API ni datos confidenciales en el chat. La base
 local contiene el mismo contenido del ticket; protegela con los permisos de tu
 equipo. Esta version no añade autenticacion de usuarios o tecnicos ni
@@ -78,7 +71,7 @@ integracion externa con una mesa de servicio.
 ## Verificacion
 
 La suite prueba la solicitud previa de contacto, validacion, creacion
-idempotente, persistencia, correo SMTP simulado, fallos y configuracion ausente,
+idempotente, persistencia, correo Gmail API simulado, fallos y configuracion ausente,
 migracion de la base previa, listado y cierre con fecha y nota.
 
 ```powershell

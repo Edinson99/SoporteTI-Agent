@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
@@ -47,6 +48,7 @@ class FirebaseDataConnectTicketService:
         contact_email: str,
         contact_phone: str,
         assistant_response: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
     ) -> dict[str, str]:
         request_uuid = UUID(request_id)
         ticket_id = str(request_uuid)
@@ -63,6 +65,16 @@ class FirebaseDataConnectTicketService:
             "email_status": "pending",
             "ticket_number": ticket_number,
             "user_id": user_id,
+            "attachments": [
+                {
+                    "id": attachment["id"],
+                    "file_name": attachment["file_name"],
+                    "content_type": attachment["content_type"],
+                    "size": len(attachment["data"]),
+                    "data_base64": base64.b64encode(attachment["data"]).decode("ascii"),
+                }
+                for attachment in attachments or []
+            ],
         }
         context_json = json.dumps(metadata, ensure_ascii=False)
         ticket = {
@@ -213,6 +225,40 @@ class FirebaseDataConnectTicketService:
         ticket = result.get("ticket")
         return ticket if isinstance(ticket, dict) else None
 
+    def get_attachment(
+        self,
+        ticket_number: str,
+        attachment_id: str,
+    ) -> dict[str, Any] | None:
+        """Lee una imagen adjunta al ticket consultado."""
+        ticket_id = self._ticket_id_from_number(ticket_number)
+        if ticket_id is None:
+            return None
+        row = self._get_ticket(ticket_id)
+        if row is None:
+            return None
+        ticket = self._to_ticket(row)
+        if ticket["ticket_number"] != ticket_number:
+            return None
+        metadata = json.loads(row.get("contextJson") or "{}")
+        for attachment in metadata.get("attachments", []):
+            if attachment.get("id") == attachment_id:
+                try:
+                    image_data = base64.b64decode(
+                        attachment["data_base64"],
+                        validate=True,
+                    )
+                except (KeyError, ValueError) as exc:
+                    raise DataConnectError(
+                        "El adjunto almacenado en Firebase tiene un formato inválido."
+                    ) from exc
+                return {
+                    "file_name": attachment["file_name"],
+                    "content_type": attachment["content_type"],
+                    "data": image_data,
+                }
+        return None
+
     def _execute(self, operation: str, variables: dict[str, Any]) -> dict[str, Any]:
         if not self.node:
             raise DataConnectError(
@@ -286,6 +332,16 @@ class FirebaseDataConnectTicketService:
     @classmethod
     def _to_ticket(cls, row: dict[str, Any]) -> dict[str, Any]:
         metadata = json.loads(row.get("contextJson") or "{}")
+        attachments = [
+            {
+                "id": attachment["id"],
+                "file_name": attachment["file_name"],
+                "content_type": attachment["content_type"],
+                "size": attachment.get("size", 0),
+            }
+            for attachment in metadata.get("attachments", [])
+        ]
+        safe_metadata = {**metadata, "attachments": attachments}
         created_at = row["createdAt"]
         ticket_number = metadata.get("ticket_number") or cls._ticket_number(
             datetime.fromisoformat(created_at.replace("Z", "+00:00")),
@@ -311,7 +367,7 @@ class FirebaseDataConnectTicketService:
             "priority": row["priority"],
             "description": row["queryText"],
             "diagnosis": metadata.get("diagnosis", ""),
-            "context_json": row.get("contextJson") or "{}",
+            "context_json": json.dumps(safe_metadata, ensure_ascii=False),
             "context": metadata.get("context", {}),
             "conversation_json": json.dumps(conversation, ensure_ascii=False),
             "conversation": conversation,
@@ -325,6 +381,7 @@ class FirebaseDataConnectTicketService:
             "status": status,
             "resolved_at": row["updatedAt"] if status == "resolved" else None,
             "resolution_note": row.get("resolutionNote"),
+            "attachments": attachments,
         }
 
     @classmethod

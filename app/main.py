@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import ipaddress
 import os
+import re
+import tempfile
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID, uuid4
@@ -11,8 +15,8 @@ from uuid import UUID, uuid4
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from fastapi.responses import FileResponse, JSONResponse, Response
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.agent import AgenteSoporteTI
 from app.dataconnect_tickets import DataConnectError, FirebaseDataConnectTicketService
@@ -23,6 +27,11 @@ from app.tickets import TicketService
 agent = AgenteSoporteTI()
 UI_FILE = Path(__file__).parent / "static" / "index.html"
 TICKETS_UI_FILE = Path(__file__).parent / "static" / "tickets.html"
+_IMAGE_EXTENSIONS = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
 
 app = FastAPI(
     title="SoporteTI-Agent API",
@@ -68,7 +77,7 @@ class ChatContext(BaseModel):
     device: str | None = Field(default=None, max_length=80)
     operating_system: str | None = Field(default=None, max_length=80)
     affected_scope: str | None = Field(default=None, max_length=160)
-    error_message: str | None = Field(default=None, max_length=300)
+    error_message: str | None = Field(default=None, max_length=1000)
     recent_changes: str | None = Field(default=None, max_length=200)
 
 
@@ -87,11 +96,57 @@ class ChatHistoryMessage(BaseModel):
     content: str = Field(..., min_length=1, max_length=1500)
 
 
+class ChatImage(BaseModel):
+    file_name: str = Field(..., min_length=1, max_length=120)
+    content_type: Literal["image/jpeg", "image/png", "image/webp"]
+    data_url: str = Field(..., min_length=40, max_length=2_800_000)
+
+    @field_validator("file_name")
+    @classmethod
+    def sanitize_file_name(cls, value: str) -> str:
+        name = value.replace("\\", "/").rsplit("/", 1)[-1]
+        name = "".join(character for character in name if character.isprintable())
+        if not name or name in {".", ".."}:
+            raise ValueError("El nombre de la imagen no es válido.")
+        return name[:120]
+
+    @model_validator(mode="after")
+    def validate_image_data(self) -> "ChatImage":
+        prefix = f"data:{self.content_type};base64,"
+        if not self.data_url.startswith(prefix):
+            raise ValueError("El formato de la imagen no coincide con su contenido.")
+        try:
+            image_data = base64.b64decode(
+                self.data_url[len(prefix):],
+                validate=True,
+            )
+        except binascii.Error as exc:
+            raise ValueError("La imagen está codificada de forma inválida.") from exc
+        if not image_data or len(image_data) > 2 * 1024 * 1024:
+            raise ValueError("Cada imagen debe pesar como máximo 2 MiB.")
+        signatures = {
+            "image/jpeg": image_data.startswith(b"\xff\xd8\xff"),
+            "image/png": image_data.startswith(b"\x89PNG\r\n\x1a\n"),
+            "image/webp": (
+                len(image_data) >= 12
+                and image_data[:4] == b"RIFF"
+                and image_data[8:12] == b"WEBP"
+            ),
+        }
+        if not signatures[self.content_type]:
+            raise ValueError("El archivo no contiene una imagen compatible.")
+        return self
+
+    def decoded(self) -> bytes:
+        return base64.b64decode(self.data_url.split(",", 1)[1])
+
+
 class AgentChatRequest(BaseModel):
     question: str = Field(..., min_length=5, max_length=500)
     user_id: str = Field(..., min_length=3, max_length=50)
     context: AgentChatContext | None = None
     history: list[ChatHistoryMessage] = Field(default_factory=list, max_length=10)
+    attachments: list[ChatImage] = Field(default_factory=list, max_length=3)
 
 
 class TicketContact(BaseModel):
@@ -223,6 +278,28 @@ def _is_loopback_request(request: Request) -> bool:
         return False
 
 
+def _requests_technician(question: str, history: list[dict[str, str]]) -> bool:
+    normalized = question.casefold()
+    direct_request = re.search(
+        r"\b(contactar|contacto|crear (?:un )?ticket|hablar con|"
+        r"solicitar soporte|escalar|tecnic[oa]|persona de soporte)\b",
+        normalized,
+    )
+    if direct_request:
+        return True
+    if history and history[-1]["role"] == "assistant":
+        assistant_asked = re.search(
+            r"\b(tecnic[oa]|contactar|crear un ticket|soporte humano)\b",
+            history[-1]["content"].casefold(),
+        )
+        affirmative = re.match(
+            r"^\s*(si|sí|por favor|de acuerdo|claro|quiero)\b",
+            normalized,
+        )
+        return bool(assistant_asked and affirmative)
+    return False
+
+
 @app.post("/agent/chat", response_model=AgentAskResponse)
 def chat_with_hermes(req: AgentChatRequest, request: Request) -> AgentAskResponse:
     """Genera un diagnostico local y lo redacta con el modelo configurado en Hermes."""
@@ -233,20 +310,51 @@ def chat_with_hermes(req: AgentChatRequest, request: Request) -> AgentAskRespons
         )
 
     context = req.context.model_dump(exclude_none=True) if req.context else None
-    resultado = agent.responder(req.question, req.user_id, context)
     historial = [mensaje.model_dump() for mensaje in req.history]
+    prior_user_messages = [
+        mensaje["content"]
+        for mensaje in historial
+        if mensaje["role"] == "user"
+    ][-3:]
+    diagnostic_question = " ".join([*prior_user_messages, req.question])
+    resultado = agent.responder(diagnostic_question, req.user_id, context)
+    user_turn_count = len(prior_user_messages) + 1
+    explicit_contact_request = _requests_technician(req.question, historial)
+    result_needs_approval = resultado["needs_approval"]
+    resultado["contact_required"] = result_needs_approval and (
+        user_turn_count >= 3 or explicit_contact_request
+    )
+    if result_needs_approval and not resultado["contact_required"] and not resultado["follow_up_questions"]:
+        resultado["follow_up_questions"] = [
+            "¿Qué paso intentaste hasta ahora y qué resultado obtuviste?"
+        ]
     try:
-        resultado["answer"] = generar_respuesta(
-            req.question,
-            resultado,
-            historial,
-        )
+        with tempfile.TemporaryDirectory(prefix="soporteti-chat-") as directory:
+            image_paths = []
+            for attachment in req.attachments:
+                image_path = Path(directory) / (
+                    f"{uuid4()}{_IMAGE_EXTENSIONS[attachment.content_type]}"
+                )
+                image_path.write_bytes(attachment.decoded())
+                image_paths.append(image_path)
+            if image_paths:
+                resultado["answer"] = generar_respuesta(
+                    req.question,
+                    resultado,
+                    historial,
+                    image_paths=image_paths,
+                )
+            else:
+                resultado["answer"] = generar_respuesta(
+                    req.question,
+                    resultado,
+                    historial,
+                )
     except HermesBridgeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     resultado["chat_model_status"] = "used"
-    if resultado["needs_approval"]:
+    if resultado["contact_required"]:
         resultado["ticket_request_id"] = uuid4()
-        resultado["contact_required"] = True
     return AgentAskResponse(**resultado)
 
 
@@ -262,7 +370,17 @@ def create_support_ticket(req: TicketCreateRequest, request: Request) -> TicketC
         )
 
     context = req.context.model_dump(exclude_none=True) if req.context else None
-    resultado = agent.responder(req.question, req.user_id, context)
+    historial = [mensaje.model_dump() for mensaje in req.history]
+    prior_user_messages = [
+        mensaje["content"]
+        for mensaje in historial
+        if mensaje["role"] == "user"
+    ][-3:]
+    resultado = agent.responder(
+        " ".join([*prior_user_messages, req.question]),
+        req.user_id,
+        context,
+    )
     if not resultado["needs_approval"]:
         raise HTTPException(
             status_code=409,
@@ -283,6 +401,15 @@ def create_support_ticket(req: TicketCreateRequest, request: Request) -> TicketC
             contact_email=req.contact.email,
             contact_phone=req.contact.phone,
             assistant_response=req.assistant_response,
+            attachments=[
+                {
+                    "id": str(uuid4()),
+                    "file_name": attachment.file_name,
+                    "content_type": attachment.content_type,
+                    "data": attachment.decoded(),
+                }
+                for attachment in req.attachments
+            ],
         )
     except DataConnectError as exc:
         raise HTTPException(
@@ -329,3 +456,28 @@ def resolve_support_ticket(
     if ticket is None:
         raise HTTPException(status_code=404, detail="No existe ese ticket.")
     return ticket
+
+
+@app.get("/api/tickets/{ticket_number}/attachments/{attachment_id}")
+def get_ticket_attachment(
+    ticket_number: str,
+    attachment_id: UUID,
+    request: Request,
+) -> Response:
+    """Entrega una imagen adjunta a un ticket solo a clientes locales."""
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="El panel solo esta disponible localmente.")
+    try:
+        attachment = ticket_service.get_attachment(ticket_number, str(attachment_id))
+    except DataConnectError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"No fue posible consultar el adjunto en Firebase Data Connect: {exc}",
+        ) from exc
+    if attachment is None:
+        raise HTTPException(status_code=404, detail="No existe ese adjunto.")
+    return Response(
+        content=attachment["data"],
+        media_type=attachment["content_type"],
+        headers={"Content-Disposition": "inline"},
+    )

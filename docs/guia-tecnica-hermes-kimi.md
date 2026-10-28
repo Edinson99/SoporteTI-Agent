@@ -19,8 +19,8 @@ humana. No se requiere desplegar la API FastAPI para utilizar MCP localmente.
 Usuario
   |
   v
-Chat web -> FastAPI -> AgenteSoporteTI -> Hermes CLI -> Kimi
-                            |           herramientas deshabilitadas
+Chat web -> FastAPI -> AgenteSoporteTI -> Hermes CLI -> modelo configurado
+                            |           herramienta web / web + vision
                             +--> base local de conocimiento
 
 Hermes interactivo -> MCP stdio -> SoporteTI-Agent (app.mcp_server)
@@ -42,24 +42,37 @@ exponer la clave de Kimi:
 
 1. FastAPI valida la solicitud y obtiene el diagnostico de
    `AgenteSoporteTI` y de la base de conocimiento local.
-2. FastAPI inicia `hermes -z ... --toolsets ''` en WSL. Hermes usa el proveedor
+2. FastAPI inicia Hermes en WSL con la herramienta `web`; si el turno incluye
+   capturas, habilita `web,vision`. No habilita terminal ni comandos. Hermes usa el proveedor
    y modelo guardados en su configuracion privada; en esta configuracion se usa
    Kimi.
-3. Hermes/Kimi redacta la respuesta usando la pregunta, el resultado local y
-   hasta diez mensajes anteriores. `user_id` no se incluye en el prompt.
+3. Hermes redacta la respuesta usando la pregunta, el resultado local y hasta
+   diez mensajes anteriores. Si la guia local no basta, puede buscar
+   documentacion oficial; con capturas, puede leer mensajes y codigos visibles.
+   `user_id` no se incluye en el prompt.
 4. El navegador muestra la redaccion del modelo junto a las hipotesis, fuentes,
    evidencia y acciones estructuradas del diagnostico local.
 
 El historial vive en la memoria de la pagina y se borra al recargar. La ruta
-web deshabilita todas las herramientas en Hermes: Kimi no ejecuta comandos ni
-invoca MCP desde el chat. La base local determina las guias, evidencias y pasos
+web no habilita terminal ni comandos. Las capturas se guardan temporalmente
+durante el turno y solo se conservan en el ticket despues del consentimiento;
+no se adjuntan al correo. La base local determina las guias, evidencias y pasos
 antes de enviar el resultado al modelo. El transporte MCP sigue disponible
 para sesiones interactivas de Hermes.
 
-La ruta es solo loopback y requiere Hermes en WSL. Pregunta, diagnostico local
-e historial se envian al proveedor configurado mediante Hermes; no introduzcas
-datos confidenciales. Si Hermes o Kimi falla, la ruta devuelve un error `503`
-explicito en vez de fingir una respuesta del modelo.
+El chat puede recopilar hasta dos respuestas de seguimiento antes de ofrecer
+el formulario de contacto, salvo que el usuario solicite contactar al tecnico
+directamente. Admite hasta tres imagenes JPG, PNG o WebP de 2 MiB cada una;
+valida MIME y firma binaria. El contenido de imagen y web se considera no
+confiable. La UI solo convierte en enlaces HTTPS los dominios oficiales que
+tiene permitidos.
+
+La ruta es solo loopback y requiere Hermes en WSL. Pregunta, contexto,
+diagnostico local, historial y las capturas del turno se envian al proveedor
+configurado mediante Hermes; no introduzcas datos confidenciales. Si Hermes o
+el proveedor falla, la ruta devuelve un error `503` explicito en vez de fingir
+una respuesta del modelo. El proveedor puede cambiarse desde `hermes model`;
+Kimi es la configuracion recomendada descrita en esta guia.
 
 ## Requisitos y ubicacion
 
@@ -229,6 +242,25 @@ devuelve escalacion pendiente de aprobacion. Para cerrar Hermes, usa `Ctrl+D`.
 | Hermes no usa la herramienta | Ejecuta `/reload-mcp` o abre una sesion nueva y pide explicitamente que consulte soporte TI. |
 | Error de Kimi/credencial | Ejecuta `hermes model` y revisa proveedor, endpoint, modelo habilitado, cuota y credencial en Hermes; no compartas la clave. |
 | `No module named pip` en el venv | Usa un entorno virtual limpio creado con `python3 -m venv` desde Ubuntu; instala `python3-venv` si el sistema lo requiere. |
+
+## Correo de escalacion y firma Gmail (opcional)
+
+El envío de correo se ejecuta en la aplicación local de Windows, separado del
+Hermes que corre en WSL. Configura Gmail API OAuth siguiendo las
+[notas de versión 1.3.5](version-1.3.5.md). En resumen: habilita Gmail API en
+Google Cloud, crea credenciales OAuth de escritorio, guarda el JSON en
+`.secrets/gmail-oauth-client.json` y ejecuta desde PowerShell la autorización:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\authorize_gmail.py
+```
+
+Si la pantalla OAuth está en modo de prueba, agrega la cuenta autorizada como
+usuario de prueba. El remitente configurado debe ser la cuenta autorizada o un
+alias habilitado. El token OAuth y el JSON de cliente son secretos locales:
+no los subas a Git ni los incluyas en capturas o registros compartidos. El
+ticket se persiste antes del envío y no se pierde si Gmail falla; las capturas
+no se adjuntan al correo.
 
 ## Limites operativos
 

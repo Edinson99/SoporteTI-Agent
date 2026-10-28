@@ -1,6 +1,6 @@
 # API Contract
 
-Contrato de API de SoporteTI-Agent v1.3.4.
+Contrato de API de SoporteTI-Agent v1.3.7.
 
 ## `GET /health`
 
@@ -120,6 +120,13 @@ y acepta opcionalmente hasta diez mensajes previos:
   "history": [
     {"role": "user", "content": "Tengo problemas de conexión"},
     {"role": "assistant", "content": "Vamos a revisar los datos disponibles."}
+  ],
+  "attachments": [
+    {
+      "file_name": "error.png",
+      "content_type": "image/png",
+      "data_url": "data:image/png;base64,<contenido-base64>"
+    }
   ]
 }
 ```
@@ -131,15 +138,25 @@ cuando no hay una guía. La respuesta conserva el resto del contrato de
 `AgentAskResponse` para que la interfaz muestre hipótesis, evidencia y pasos
 recomendados. Se envían al modelo la pregunta, el resultado local y el
 historial; `user_id` no se incluye en el prompt. La API key permanece en Hermes.
-Si Hermes/Kimi falla, devuelve `503`; no se presenta la respuesta local como si
-fuera una respuesta del modelo.
+Si Hermes o el proveedor configurado falla, devuelve `503`; no se presenta la
+respuesta local como si fuera una respuesta del modelo.
 
-Esta ruta de chat no invoca herramientas Hermes/MCP: las herramientas están
-deshabilitadas en el modo de una sola consulta. Si no encuentra guía, Hermes y
-el modelo configurado redactan la respuesta de escalación y la interfaz
-pregunta si se desea contactar al técnico. Todavía no crea ni envía el ticket.
-Para consultas con guía, el modelo redacta la respuesta; los errores de Hermes
-se devuelven explícitamente.
+Hermes se invoca con la herramienta web para buscar información solo si la guía
+local no basta; cuando se adjuntan imágenes se habilita también la herramienta
+de visión. No se habilitan terminal ni ejecución de comandos. Las imágenes se
+guardan temporalmente durante el turno y se eliminan al terminar, incluso ante
+un error. `attachments` admite hasta tres imágenes JPG, PNG o WebP de máximo
+2 MiB cada una; se validan el MIME y la firma binaria. El contenido de una
+imagen o página web se trata como dato no confiable. La interfaz solo hace
+clicables enlaces HTTPS de dominios oficiales permitidos.
+
+Si no encuentra guía, la interfaz permite recopilar hasta tres turnos del
+usuario (la consulta inicial y dos respuestas de seguimiento) antes de mostrar
+el formulario de contacto; una petición explícita para contactar al técnico
+permite mostrarlo antes. Todavía no crea ni envía el ticket. Para consultas
+con guía, el modelo redacta la respuesta; los errores de Hermes se devuelven
+explícitamente. El historial y las capturas permanecen solo en la memoria de
+la página mientras dura la sesión y se pierden al recargar.
 
 ### Tickets y notificaciones locales
 
@@ -206,6 +223,13 @@ sigue sin encontrar una guía. Requiere loopback.
     {"role": "user", "content": "Tengo problemas de conexión"},
     {"role": "assistant", "content": "¿Afecta a otros equipos?"}
   ],
+  "attachments": [
+    {
+      "file_name": "error.png",
+      "content_type": "image/png",
+      "data_url": "data:image/png;base64,<contenido-base64>"
+    }
+  ],
   "request_id": "a762137a-4b3b-4fa2-9644-31a5ad019ff4",
   "consent_to_email": true,
   "contact": {
@@ -220,7 +244,10 @@ sigue sin encontrar una guía. Requiere loopback.
 `request_id` es un UUID; `consent_to_email` debe ser `true` para autorizar la
 creación del ticket y el envío del correo al técnico con copia al usuario.
 `contact.name`, `contact.email` y `contact.phone` son obligatorios y validados.
-`history` admite hasta diez mensajes. Respuesta
+`history` admite hasta diez mensajes. `attachments` admite hasta tres imágenes
+del mismo formato y tamaño validados para `/agent/chat`; solo se guardan tras
+el consentimiento y se muestran desde el panel local. No se adjuntan al correo.
+Respuesta
 `201`:
 
 ```json
@@ -236,10 +263,18 @@ Los posibles valores de `email_status` son `pending`, `sent`, `failed` y
 `403` indica que la solicitud no procede de loopback o no incluye consentimiento; los errores de
 validación usan `422`.
 
+El correo se envía por Gmail API OAuth. Cuando la cuenta remitente tiene una
+firma configurada en Gmail, se consulta y añade al mensaje al enviarlo. La
+configuración y el flujo de autorización están en las
+[notas de la versión 1.3.5](version-1.3.5.md). El ticket se guarda antes de
+intentar enviar el correo; un error de Gmail no elimina el ticket.
+
 ## Seguimiento de tickets
 
 - `GET /tickets`: panel local del técnico.
 - `GET /api/tickets`: lista tickets, contacto, conversación y estado.
+- `GET /api/tickets/{ticket_number}/attachments/{attachment_id}`: entrega una
+  imagen del ticket a clientes locales; los bytes no se incluyen en el listado.
 - `POST /api/tickets/{ticket_number}/resolve`: guarda fecha y nota opcional de
   resolución.
 
@@ -249,4 +284,6 @@ la fecha de resolución y la nota.
 
 El panel y sus endpoints de datos requieren una conexión de loopback, pero no
 hay autenticación de técnicos. No expongas el servidor ni compartas el panel
-con usuarios no autorizados.
+con usuarios no autorizados. Para Firebase Data Connect, las imágenes se
+almacenan en los metadatos de contexto; para SQLite, en una tabla de adjuntos.
+El endpoint las sirve solo desde conexiones locales.

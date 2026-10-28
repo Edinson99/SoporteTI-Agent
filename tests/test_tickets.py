@@ -1,6 +1,8 @@
+import base64
 import json
 import sqlite3
-from email.message import EmailMessage
+from email import policy
+from email.parser import BytesParser
 
 from app.tickets import TicketService
 
@@ -26,7 +28,7 @@ def _create_ticket(service, **overrides):
 def test_ticket_persistente_incluye_conversacion_y_estado_sin_correo(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setenv("SMTP_APP_PASSWORD", "")
+    monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", "")
     service = TicketService(tmp_path / "tickets.sqlite3")
 
     resultado = _create_ticket(service)
@@ -64,64 +66,106 @@ def test_ticket_persistente_incluye_conversacion_y_estado_sin_correo(
     assert ticket["status"] == "open"
 
 
-def test_ticket_envia_correo_gmail_por_starttls(tmp_path, monkeypatch):
+def test_ticket_envia_correo_con_firma_de_gmail_api(tmp_path, monkeypatch):
     capturado = {}
 
-    class FakeSMTP:
-        def __init__(self, host, port, timeout):
-            capturado["connection"] = (host, port, timeout)
+    class FakeCredentials:
+        valid = True
 
-        def __enter__(self):
+        @classmethod
+        def from_authorized_user_file(cls, token_path):
+            capturado["token_path"] = token_path
+            return cls()
+
+        def has_scopes(self, scopes):
+            capturado["scopes"] = scopes
+            return True
+
+    class FakeCall:
+        def __init__(self, response):
+            self.response = response
+
+        def execute(self):
+            return self.response
+
+    class FakeGmail:
+        def users(self):
             return self
 
-        def __exit__(self, *_):
-            return False
+        def settings(self):
+            return self
 
-        def ehlo(self):
-            pass
+        def sendAs(self):
+            return self
 
-        def starttls(self, *, context):
-            capturado["tls"] = context
+        def get(self, *, userId, sendAsEmail):
+            capturado["send_as"] = (userId, sendAsEmail)
+            return FakeCall(
+                {"signature": "<div>Saludos,<br><b>Javier</b></div>"}
+            )
 
-        def login(self, username, password):
-            capturado["credentials"] = (username, password)
+        def messages(self):
+            return self
 
-        def send_message(self, message: EmailMessage):
-            capturado["message"] = message
+        def send(self, *, userId, body):
+            capturado["send_message"] = (userId, body)
+            return FakeCall({"id": "message-id"})
 
-    monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
-    monkeypatch.setenv("SMTP_PORT", "587")
-    monkeypatch.setenv("SMTP_USERNAME", "soporteitelectiva@gmail.com")
-    monkeypatch.setenv("SMTP_FROM_EMAIL", "soporteitelectiva@gmail.com")
-    monkeypatch.setenv("SMTP_TO_EMAIL", "javiercito9456@gmail.com")
-    monkeypatch.setenv("SMTP_APP_PASSWORD", "abcd efgh")
-    monkeypatch.setattr("app.tickets.smtplib.SMTP", FakeSMTP)
+    token_file = tmp_path / "gmail-token.json"
+    token_file.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("GMAIL_SENDER", "soporte@example.com")
+    monkeypatch.setenv("GMAIL_TO_EMAIL", "tecnico@example.com")
+    monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", str(token_file))
+    monkeypatch.setattr("app.tickets.Credentials", FakeCredentials)
+    monkeypatch.setattr("app.tickets.build", lambda *args, **kwargs: FakeGmail())
     resultado = _create_ticket(TicketService(tmp_path / "tickets.sqlite3"))
 
     assert resultado["ticket_email_status"] == "sent"
-    assert capturado["connection"] == ("smtp.gmail.com", 587, 15)
-    assert capturado["credentials"] == ("soporteitelectiva@gmail.com", "abcdefgh")
-    message = capturado["message"]
-    assert message["From"] == "soporteitelectiva@gmail.com"
-    assert message["To"] == "javiercito9456@gmail.com"
+    assert capturado["token_path"] == str(token_file)
+    assert "https://www.googleapis.com/auth/gmail.settings.basic" in capturado["scopes"]
+    assert capturado["send_as"] == ("me", "soporte@example.com")
+    raw_message = capturado["send_message"][1]["raw"]
+    message = BytesParser(policy=policy.default).parsebytes(
+        base64.urlsafe_b64decode(raw_message)
+    )
+    assert message["From"] == "soporte@example.com"
+    assert message["To"] == "tecnico@example.com"
     assert message["Cc"] == "javier@example.com"
     assert resultado["incident_id"] in message["Subject"]
-    assert "USR-1042" in message.get_content()
-    assert "Javier Perez" in message.get_content()
-    assert "javier@example.com" in message.get_content()
-    assert "+57 300 123 4567" in message.get_content()
-    assert "El problema empezo hoy" in message.get_content()
+    text_content = message.get_body(preferencelist=("plain",)).get_content()
+    assert "USR-1042" in text_content
+    assert "Saludos," in text_content
+    assert "Javier" in text_content
+    assert "Javier Perez" in text_content
+    assert "javier@example.com" in text_content
+    assert "+57 300 123 4567" in text_content
+    assert "El problema empezo hoy" in text_content
+    html_content = message.get_body(preferencelist=("html",)).get_content()
+    assert "<div>Saludos,<br><b>Javier</b></div>" in html_content
 
 
-def test_fallo_smtp_no_pierde_ticket_y_queda_reportado(tmp_path, monkeypatch):
-    monkeypatch.setenv("SMTP_APP_PASSWORD", "fake-password")
+def test_fallo_gmail_api_no_pierde_ticket_y_queda_reportado(tmp_path, monkeypatch):
+    token_file = tmp_path / "gmail-token.json"
+    token_file.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("GMAIL_SENDER", "soporte@example.com")
+    monkeypatch.setenv("GMAIL_TO_EMAIL", "tecnico@example.com")
+    monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", str(token_file))
 
-    class FailedSMTP:
-        def __init__(self, host, port, timeout):
-            assert (host, port, timeout) == ("smtp.gmail.com", 587, 15)
-            raise OSError("connection refused")
+    class FakeCredentials:
+        valid = True
 
-    monkeypatch.setattr("app.tickets.smtplib.SMTP", FailedSMTP)
+        @classmethod
+        def from_authorized_user_file(cls, _token_path):
+            return cls()
+
+        def has_scopes(self, _scopes):
+            return True
+
+    def fail_to_build(*_args, **_kwargs):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr("app.tickets.Credentials", FakeCredentials)
+    monkeypatch.setattr("app.tickets.build", fail_to_build)
     service = TicketService(tmp_path / "tickets.sqlite3")
     resultado = _create_ticket(service)
 
@@ -135,7 +179,7 @@ def test_fallo_smtp_no_pierde_ticket_y_queda_reportado(tmp_path, monkeypatch):
 
 
 def test_repetir_solicitud_idempotente_no_duplica_ticket(tmp_path, monkeypatch):
-    monkeypatch.setenv("SMTP_APP_PASSWORD", "")
+    monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", "")
     service = TicketService(tmp_path / "tickets.sqlite3")
 
     first = _create_ticket(service)
@@ -146,7 +190,7 @@ def test_repetir_solicitud_idempotente_no_duplica_ticket(tmp_path, monkeypatch):
 
 
 def test_resuelve_ticket_con_fecha_y_nota(tmp_path, monkeypatch):
-    monkeypatch.setenv("SMTP_APP_PASSWORD", "")
+    monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", "")
     service = TicketService(tmp_path / "tickets.sqlite3")
     created = _create_ticket(service)
 

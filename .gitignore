@@ -19,6 +19,7 @@ env/
 
 # Variables de entorno (contienen secretos)
 .env
+.secrets/
 
 # Tickets y datos locales
 data/tickets.sqlite3

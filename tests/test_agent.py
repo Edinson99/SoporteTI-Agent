@@ -1,5 +1,6 @@
 """Pruebas del flujo objetivo -> herramientas -> resultado -> limites."""
 
+import base64
 import json
 import sqlite3
 from pathlib import Path
@@ -238,7 +239,7 @@ def test_inicio_sirve_interfaz_grafica():
     assert 'fetch("/agent/chat"' in respuesta.text
     assert 'fetch("/agent/tickets"' in respuesta.text
     assert 'href="/tickets"' in respuesta.text
-    assert "Hermes + Kimi" in respuesta.text
+    assert "Hermes + modelo configurado" in respuesta.text
 
 
 def test_panel_de_seguimiento_se_sirve_solo_en_loopback():
@@ -246,6 +247,9 @@ def test_panel_de_seguimiento_se_sirve_solo_en_loopback():
     assert respuesta.status_code == 200
     assert "Marcar resuelto" in respuesta.text
     assert 'fetch("/api/tickets")' in respuesta.text
+    assert 'id="search"' in respuesta.text
+    assert 'id="open-count"' in respuesta.text
+    assert "Ver diagnóstico y contexto" in respuesta.text
 
 
 def test_agent_ask_retorna_diagnostico_ti():
@@ -323,7 +327,7 @@ def test_chat_hermes_enriquece_diagnostico_local_con_kimi(monkeypatch):
     assert datos["sources"] == ["kb_internet_001"]
 
 
-def test_chat_sin_guia_solicita_contacto_y_no_guarda_antes_de_autorizar(
+def test_chat_sin_guia_pide_mas_datos_antes_de_ofrecer_contacto(
     tmp_path, monkeypatch
 ):
     service = TicketService(tmp_path / "tickets.sqlite3")
@@ -332,7 +336,7 @@ def test_chat_sin_guia_solicita_contacto_y_no_guarda_antes_de_autorizar(
 
     def respuesta_modelo(question, diagnostico, history):
         calls.append((question, diagnostico["needs_approval"], history))
-        return "No encuentro una guía suficiente. ¿Quieres que contacte al técnico?"
+        return "¿Qué ocurre al encenderla y qué mensaje aparece?"
 
     monkeypatch.setattr(main_module, "generar_respuesta", respuesta_modelo)
     respuesta = client.post(
@@ -349,10 +353,11 @@ def test_chat_sin_guia_solicita_contacto_y_no_guarda_antes_de_autorizar(
 
     assert respuesta.status_code == 200
     datos = respuesta.json()
-    assert datos["contact_required"] is True
-    assert datos["ticket_request_id"]
+    assert datos["contact_required"] is False
+    assert datos["ticket_request_id"] is None
     assert datos["chat_model_status"] == "used"
-    assert datos["answer"].startswith("No encuentro una guía")
+    assert datos["answer"].startswith("¿Qué ocurre")
+    assert datos["follow_up_questions"]
     assert calls == [
         (
             "La cafetera no funciona",
@@ -366,8 +371,156 @@ def test_chat_sin_guia_solicita_contacto_y_no_guarda_antes_de_autorizar(
     assert not service.database_path.exists()
 
 
+def test_chat_ofrece_contacto_tras_dos_rondas_de_aclaracion(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "generar_respuesta",
+        lambda question, diagnosis, history: "Podemos contactar al técnico.",
+    )
+    response = client.post(
+        "/agent/chat",
+        json={
+            "question": "El problema sigue igual",
+            "user_id": "USR-1042",
+            "history": [
+                {"role": "user", "content": "La cafetera no funciona"},
+                {"role": "assistant", "content": "¿Desde cuándo ocurre?"},
+                {"role": "user", "content": "Desde esta manana"},
+                {"role": "assistant", "content": "¿Qué intentaste?"},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["contact_required"] is True
+    assert response.json()["ticket_request_id"]
+
+
+def test_chat_permite_solicitar_tecnico_antes_de_tres_turnos(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "generar_respuesta",
+        lambda question, diagnosis, history: "De acuerdo.",
+    )
+    response = client.post(
+        "/agent/chat",
+        json={
+            "question": "Quiero contactar al técnico",
+            "user_id": "USR-1042",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["contact_required"] is True
+    assert response.json()["ticket_request_id"]
+
+
+def test_chat_analiza_imagen_temporal_sin_persistirla(tmp_path, monkeypatch):
+    observed = {}
+
+    def analyze(question, diagnosis, history, *, image_paths):
+        observed["path"] = image_paths[0]
+        observed["exists_during_analysis"] = image_paths[0].is_file()
+        return "El error visible es E-104."
+
+    monkeypatch.setattr(main_module, "generar_respuesta", analyze)
+    image_bytes = b"\x89PNG\r\n\x1a\n" + b"test-image-bytes"
+    response = client.post(
+        "/agent/chat",
+        json={
+            "question": "No inicia el programa",
+            "user_id": "USR-1042",
+            "attachments": [
+                {
+                    "file_name": "error.png",
+                    "content_type": "image/png",
+                    "data_url": (
+                        "data:image/png;base64,"
+                        + base64.b64encode(image_bytes).decode("ascii")
+                    ),
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "El error visible es E-104."
+    assert observed["exists_during_analysis"] is True
+    assert observed["path"].is_file() is False
+
+
+def test_chat_rechaza_imagen_que_no_coincide_con_el_mime():
+    response = client.post(
+        "/agent/chat",
+        json={
+            "question": "No inicia el programa",
+            "user_id": "USR-1042",
+            "attachments": [
+                {
+                    "file_name": "error.png",
+                    "content_type": "image/png",
+                    "data_url": "data:image/png;base64," + base64.b64encode(b"not png").decode("ascii"),
+                }
+            ],
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_ticket_api_guarda_y_sirve_adjuntos_solo_en_el_panel_local(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", "")
+    service = TicketService(tmp_path / "tickets.sqlite3")
+    monkeypatch.setattr(main_module, "ticket_service", service)
+    image_bytes = b"\x89PNG\r\n\x1a\n" + b"ticket-image-bytes"
+    created = client.post(
+        "/agent/tickets",
+        json={
+            "request_id": "55038ee8-92a5-4db4-b4b2-965983e367de",
+            "question": "La cafetera no funciona",
+            "user_id": "USR-1042",
+            "consent_to_email": True,
+            "contact": {
+                "name": "Javier Perez",
+                "email": "javier@example.com",
+                "phone": "+57 300 123 4567",
+            },
+            "attachments": [
+                {
+                    "file_name": "pantalla.png",
+                    "content_type": "image/png",
+                    "data_url": (
+                        "data:image/png;base64,"
+                        + base64.b64encode(image_bytes).decode("ascii")
+                    ),
+                }
+            ],
+        },
+    )
+
+    assert created.status_code == 201
+    ticket_number = created.json()["ticket_number"]
+    listed = next(
+        ticket
+        for ticket in client.get("/api/tickets").json()
+        if ticket["ticket_number"] == ticket_number
+    )
+    assert len(listed["attachments"]) == 1
+    saved_attachment = listed["attachments"][0]
+    assert saved_attachment["file_name"] == "pantalla.png"
+    assert saved_attachment["content_type"] == "image/png"
+    assert saved_attachment["size"] == len(image_bytes)
+    response = client.get(
+        f"/api/tickets/{ticket_number}/attachments/{saved_attachment['id']}"
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content == image_bytes
+
+
 def test_crear_ticket_exige_contacto_y_envia_conversacion(tmp_path, monkeypatch):
-    monkeypatch.setenv("SMTP_APP_PASSWORD", "")
+    monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", "")
     service = TicketService(tmp_path / "tickets.sqlite3")
     monkeypatch.setattr(main_module, "ticket_service", service)
     response = client.post(
@@ -538,7 +691,11 @@ def test_puente_hermes_lanza_cli_sin_herramientas_y_con_referencia_local(monkeyp
             command, 0, stdout="Respuesta redactada por Kimi\n", stderr=""
         )
 
-    monkeypatch.setattr(hermes_bridge, "_command", lambda prompt: ["hermes", "-z", prompt, "--toolsets", ""])
+    monkeypatch.setattr(
+        hermes_bridge,
+        "_command",
+        lambda prompt: ["hermes", "-z", prompt, "--toolsets", "web"],
+    )
     monkeypatch.setattr(hermes_bridge.subprocess, "run", ejecutar)
     answer = hermes_bridge.generar_respuesta(
         "No tengo internet",
@@ -547,13 +704,13 @@ def test_puente_hermes_lanza_cli_sin_herramientas_y_con_referencia_local(monkeyp
     )
     command = capturado["command"]
     assert answer == "Respuesta redactada por Kimi"
-    assert command[-2:] == ["--toolsets", ""]
+    assert command[-2:] == ["--toolsets", "web"]
     assert "kb_internet_001" in command[2]
     assert "No resuelve nombres" in command[2]
     assert capturado["kwargs"]["timeout"] == 180
 
 
-def test_puente_hermes_explica_limite_de_kimi(monkeypatch):
+def test_puente_hermes_explica_limite_del_proveedor(monkeypatch):
     def rate_limited(command, **kwargs):
         return hermes_bridge.subprocess.CompletedProcess(
             command, 2, stdout="HTTP 429: rate-limited", stderr=""
@@ -561,7 +718,27 @@ def test_puente_hermes_explica_limite_de_kimi(monkeypatch):
 
     monkeypatch.setattr(hermes_bridge, "_command", lambda prompt: ["hermes"])
     monkeypatch.setattr(hermes_bridge.subprocess, "run", rate_limited)
-    with pytest.raises(hermes_bridge.HermesBridgeError, match="limite temporal"):
+    with pytest.raises(
+        hermes_bridge.HermesBridgeError, match="temporal de solicitudes"
+    ):
+        hermes_bridge.generar_respuesta("No tengo internet", {}, [])
+
+
+def test_puente_hermes_explica_creditos_agotados_de_gemini(monkeypatch):
+    def credits_exhausted(command, **kwargs):
+        return hermes_bridge.subprocess.CompletedProcess(
+            command,
+            2,
+            stdout=(
+                "Gemini HTTP 402 (RESOURCE_EXHAUSTED): "
+                "Your prepayment credits are depleted."
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(hermes_bridge, "_command", lambda prompt: ["hermes"])
+    monkeypatch.setattr(hermes_bridge.subprocess, "run", credits_exhausted)
+    with pytest.raises(hermes_bridge.HermesBridgeError, match="HTTP 402"):
         hermes_bridge.generar_respuesta("No tengo internet", {}, [])
 
 
@@ -576,7 +753,20 @@ def test_comando_wsl_escapa_el_prompt_y_permite_fijar_distribucion(monkeypatch):
     assert command[-3:-1] == ["bash", "-lc"]
     assert "exec hermes -z" in command[-1]
     assert "no ejecutar" in command[-1]
-    assert "--toolsets ''" in command[-1]
+    assert "--toolsets web" in command[-1]
+
+
+def test_comando_hermes_habilita_solo_web_y_vision_para_imagenes(monkeypatch):
+    monkeypatch.setattr(hermes_bridge.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(hermes_bridge.shutil, "which", lambda _: "wsl.exe")
+
+    command = hermes_bridge._command(
+        "Analiza la captura.",
+        ["/mnt/c/temp/capture.png"],
+    )
+
+    assert "--toolsets web,vision" in command[-1]
+    assert "terminal" not in command[-1]
 
 
 def test_herramienta_mcp_consulta_el_diagnostico_compartido():
