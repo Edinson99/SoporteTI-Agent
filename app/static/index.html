@@ -293,7 +293,7 @@
             <button class="send" id="send-button" type="submit">Enviar <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10h13M10 4l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           </form>
           <div id="attachment-preview" class="attachment-preview" aria-live="polite"></div>
-          <div class="hint">Se aceptan hasta 3 imágenes de 2 MiB cada una. Se envían a Kimi para analizarlas y solo se guardan en un ticket si autorizas la escalación. No compartas contraseñas, códigos MFA ni datos confidenciales.</div>
+          <div class="hint">Puedes adjuntar hasta 3 imágenes de 2 MiB. El proveedor configurado en Hermes las analizará si es posible. Si el caso no tiene guía, haremos hasta 3 preguntas de seguimiento y después te ofreceremos contactar al técnico. Las capturas solo se guardan en el ticket con tu autorización.</div>
           <div class="error" id="error-message" role="alert"></div>
         </div>
       </section>
@@ -594,12 +594,15 @@
         content.append(paragraph);
       }
 
-      if (data.follow_up_questions?.length) {
+      const displayedQuestions = (data.follow_up_questions || []).filter(
+        (question) => !data.answer.toLocaleLowerCase().includes(question.toLocaleLowerCase())
+      );
+      if (displayedQuestions.length) {
         const heading = document.createElement("p");
         heading.textContent = "Para afinar el diagnóstico, indica:";
         content.append(heading);
         const questions = document.createElement("ul");
-        data.follow_up_questions.forEach((question) => {
+        displayedQuestions.forEach((question) => {
           const item = document.createElement("li");
           item.textContent = question;
           questions.append(item);
@@ -617,7 +620,7 @@
         const title = document.createElement("h3");
         title.textContent = "Antes de enviar el caso al técnico";
         const privacy = document.createElement("p");
-        privacy.textContent = "No encontramos una guía suficiente después de recopilar más información. ¿Quieres contactar al técnico para continuar? Recibirá la descripción, la conversación y tus datos de contacto. Las capturas adjuntas se guardarán en el ticket y estarán disponibles en el panel; no se adjuntan al correo. No se enviará nada hasta que confirmes abajo.";
+        privacy.textContent = "No logramos resolver la incidencia con la información y los pasos revisados. ¿Quieres contactar al técnico para continuar? Recibirá la descripción, la conversación y tus datos de contacto. Las capturas adjuntas se guardarán en el ticket y estarán disponibles en el panel; no se adjuntan al correo. No se enviará nada hasta que confirmes abajo.";
         contactForm.append(title, privacy);
 
         const fieldGrid = document.createElement("div");

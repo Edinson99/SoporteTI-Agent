@@ -47,6 +47,117 @@ class _SignatureTextParser(HTMLParser):
         self.parts.append(data)
 
 
+def _format_ticket_email_html(
+    *,
+    ticket_number: str,
+    created_at: datetime,
+    user_id: str,
+    category: str,
+    priority: str,
+    question: str,
+    diagnosis: str,
+    context: dict[str, Any],
+    conversation: list[dict[str, str]],
+    contact_name: str,
+    contact_email: str,
+    contact_phone: str,
+    signature: str,
+) -> str:
+    escape = lambda value: html.escape(str(value), quote=True)
+    priority_colors = {
+        "critical": ("#991b1b", "#fee2e2"),
+        "high": ("#9a3412", "#ffedd5"),
+        "normal": ("#1d4ed8", "#dbeafe"),
+        "low": ("#475569", "#e2e8f0"),
+    }
+    priority_foreground, priority_background = priority_colors.get(
+        priority.casefold(), ("#334155", "#e2e8f0")
+    )
+    context_rows = "".join(
+        "<tr>"
+        f'<td style="padding:9px 12px;border-bottom:1px solid #e8edf4;color:#64748b;font-size:12px;width:32%">{escape(key)}</td>'
+        f'<td style="padding:9px 12px;border-bottom:1px solid #e8edf4;color:#1e293b;font-size:13px">{escape(json.dumps(value, ensure_ascii=False, default=str) if isinstance(value, (dict, list)) else value)}</td>'
+        "</tr>"
+        for key, value in context.items()
+    ) or (
+        '<tr><td style="padding:10px 12px;color:#64748b;font-size:13px">'
+        "Sin contexto adicional"
+        "</td></tr>"
+    )
+    conversation_items = "".join(
+        (
+            '<div style="margin:0 0 12px;padding:12px 14px;border-radius:10px;'
+            f'background:{"#eff6ff" if item["role"] == "user" else "#f8fafc"};'
+            f'border-left:3px solid {"#2563eb" if item["role"] == "user" else "#94a3b8"}">'
+            f'<div style="margin:0 0 6px;color:#475569;font-size:11px;font-weight:700">'
+            f'{escape("Usuario" if item["role"] == "user" else "Asistente")}</div>'
+            f'<div style="color:#1e293b;font-size:13px;line-height:1.6">{escape(item["content"]).replace(chr(10), "<br>")}</div>'
+            "</div>"
+        )
+        for item in conversation
+    ) or '<p style="color:#64748b;font-size:13px">Sin conversación registrada.</p>'
+    return f"""<!doctype html>
+<html lang="es">
+<body style="margin:0;padding:24px 12px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#1e293b">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden">
+    <tr>
+      <td style="padding:24px 28px;background:#102a43;color:#ffffff;border-bottom:4px solid #22c1b5">
+        <div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#b9d6e8">Soporte TI · Nueva incidencia</div>
+        <div style="margin-top:9px;font-size:24px;font-weight:700">Requiere revisión técnica</div>
+        <div style="margin-top:10px;font-size:13px;color:#d9e7f0">{escape(ticket_number)} &nbsp;·&nbsp; {escape(created_at.strftime("%Y-%m-%d %H:%M UTC"))}</div>
+      </td>
+    </tr>
+    <tr><td style="padding:22px 28px 8px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+        <td style="padding:12px;background:#f8fafc;border:1px solid #e8edf4;border-radius:9px">
+          <div style="color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:1px">Categoría</div>
+          <div style="margin-top:5px;font-size:14px;font-weight:700">{escape(category)}</div>
+        </td>
+        <td width="12"></td>
+        <td style="padding:12px;background:#f8fafc;border:1px solid #e8edf4;border-radius:9px">
+          <div style="color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:1px">Prioridad</div>
+          <div style="margin-top:5px"><span style="display:inline-block;padding:4px 9px;border-radius:999px;background:{priority_background};color:{priority_foreground};font-size:12px;font-weight:700">{escape(priority)}</span></div>
+        </td>
+        <td width="12"></td>
+        <td style="padding:12px;background:#f8fafc;border:1px solid #e8edf4;border-radius:9px">
+          <div style="color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:1px">Usuario</div>
+          <div style="margin-top:5px;font-size:14px;font-weight:700">{escape(user_id)}</div>
+        </td>
+      </tr></table>
+    </td></tr>
+    <tr><td style="padding:18px 28px 6px">
+      <div style="margin-bottom:10px;color:#102a43;font-size:16px;font-weight:700">Descripción del problema</div>
+      <div style="padding:14px 16px;background:#f8fafc;border:1px solid #e8edf4;border-radius:10px;font-size:14px;line-height:1.65">{escape(question).replace(chr(10), "<br>")}</div>
+    </td></tr>
+    <tr><td style="padding:16px 28px 6px">
+      <div style="margin-bottom:8px;color:#102a43;font-size:16px;font-weight:700">Motivo de escalación</div>
+      <div style="color:#334155;font-size:13px;line-height:1.6">{escape(diagnosis).replace(chr(10), "<br>")}</div>
+    </td></tr>
+    <tr><td style="padding:16px 28px 6px">
+      <div style="margin-bottom:8px;color:#102a43;font-size:16px;font-weight:700">Datos de contacto</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e8edf4;border-radius:9px">
+        <tr><td style="padding:9px 12px;color:#64748b;font-size:12px;width:32%">Nombre</td><td style="padding:9px 12px;color:#1e293b;font-size:13px">{escape(contact_name)}</td></tr>
+        <tr><td style="padding:9px 12px;border-top:1px solid #e8edf4;color:#64748b;font-size:12px">Correo</td><td style="padding:9px 12px;border-top:1px solid #e8edf4;color:#1e293b;font-size:13px">{escape(contact_email)}</td></tr>
+        <tr><td style="padding:9px 12px;border-top:1px solid #e8edf4;color:#64748b;font-size:12px">Teléfono</td><td style="padding:9px 12px;border-top:1px solid #e8edf4;color:#1e293b;font-size:13px">{escape(contact_phone)}</td></tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:16px 28px 6px">
+      <div style="margin-bottom:8px;color:#102a43;font-size:16px;font-weight:700">Contexto del equipo</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e8edf4;border-radius:9px">{context_rows}</table>
+    </td></tr>
+    <tr><td style="padding:16px 28px 8px">
+      <div style="margin-bottom:10px;color:#102a43;font-size:16px;font-weight:700">Conversación</div>
+      {conversation_items}
+    </td></tr>
+    <tr><td style="padding:18px 28px;border-top:1px solid #e8edf4;color:#64748b;font-size:11px;line-height:1.5">
+      Mensaje generado por SoporteTI-Agent. Las capturas, si existen, están disponibles en el panel local y no se adjuntan a este correo.
+    </td></tr>
+    <tr><td style="padding:0 28px 24px;color:#334155;font-size:13px;line-height:1.5">{signature}</td></tr>
+  </table>
+</body>
+</html>"""
+
+
 class TicketService:
     """Guarda tickets SQLite y notifica al tecnico mediante Gmail API."""
 
@@ -421,7 +532,9 @@ Conversacion disponible:
             signature = send_as.get("signature", "")
 
             message = EmailMessage()
-            message["Subject"] = f"[{ticket_number}] Incidencia sin guia - {category}"
+            message["Subject"] = (
+                f"[{priority.upper()}] [{ticket_number}] Incidencia - {category}"
+            )
             message["From"] = sender
             message["To"] = recipient
             message["Cc"] = contact_email
@@ -431,12 +544,24 @@ Conversacion disponible:
             message.set_content(
                 body_text + (f"\n\n{signature_text}" if signature_text else "")
             )
-            if signature:
-                escaped_body = html.escape(body_text).replace("\n", "<br>\n")
-                message.add_alternative(
-                    f"<div>{escaped_body}</div><br>{signature}",
-                    subtype="html",
-                )
+            message.add_alternative(
+                _format_ticket_email_html(
+                    ticket_number=ticket_number,
+                    created_at=created_at,
+                    user_id=user_id,
+                    category=category,
+                    priority=priority,
+                    question=question,
+                    diagnosis=diagnosis,
+                    context=context,
+                    conversation=conversation,
+                    contact_name=contact_name,
+                    contact_email=contact_email,
+                    contact_phone=contact_phone,
+                    signature=signature,
+                ),
+                subtype="html",
+            )
             raw_message = base64.urlsafe_b64encode(
                 message.as_bytes(policy=policy.SMTP)
             ).decode("ascii")

@@ -114,8 +114,8 @@ logica de `AgenteSoporteTI`. El chat calcula primero el diagnostico local y
 despues invoca Hermes con la herramienta web; cuando hay capturas tambien
 habilita vision. No se habilitan terminal ni ejecucion de comandos. Las
 capturas temporales se eliminan al terminar el turno. Si el diagnostico no
-encuentra guia suficiente, el chat recopila hasta tres turnos del usuario
-(consulta inicial y dos aclaraciones) antes de ofrecer escalar; se puede pedir
+encuentra guia suficiente, el chat formula seguimiento y ofrece escalar tras
+tres respuestas del usuario (cuarto mensaje contando la consulta inicial); se puede pedir
 contactar al tecnico antes. El ticket y el aviso no se generan hasta que el
 usuario proporciona contacto y autoriza compartir el caso. Las imagenes se
 guardan en el ticket tras el consentimiento, se muestran en el panel local y
@@ -154,7 +154,7 @@ cotidiano, la [guia para usuarios](guia-usuario-hermes-kimi.md).
 4. **Diagnostico:** `app/diagnostics.py` formula hipotesis y preguntas; si el usuario declara resultados de red, los interpreta como no verificados.
 5. **Respuesta conocida:** devuelve las guias, pasos, confianza heuristica y `recopilar_datos` si falta contexto.
 6. **Redaccion conversacional:** Hermes usa la herramienta web solo cuando la guia local no basta, y habilita vision cuando hay capturas; no habilita terminal ni ejecucion de comandos.
-7. **Escalacion consentida:** sin guia suficiente, el chat recopila hasta tres turnos del usuario antes de ofrecer contactar al tecnico, salvo peticion explicita; solo tras capturar contacto y consentimiento se guarda y notifica el ticket.
+7. **Escalacion consentida:** si la incidencia sigue sin resolverse, el chat ofrece contactar al tecnico tras tres respuestas del usuario, aunque exista una guia; una peticion explicita lo adelanta. Solo tras capturar contacto y consentimiento se guarda y notifica el ticket.
 8. **Persistencia:** se usa SQLite o Firebase Data Connect segun la configuracion; Firebase persiste en Cloud SQL las tablas existentes de tickets, mensajes y auditoria.
 9. **Observabilidad del resultado:** HTTP expone JSON; MCP entrega los campos del diagnostico como resultado de herramienta.
 10. **Limites:** no se ejecutan comandos ni se cambia configuracion del equipo; el consentimiento autoriza compartir la incidencia, no ejecutar acciones tecnicas.

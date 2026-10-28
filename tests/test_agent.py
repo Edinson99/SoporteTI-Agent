@@ -371,7 +371,7 @@ def test_chat_sin_guia_pide_mas_datos_antes_de_ofrecer_contacto(
     assert not service.database_path.exists()
 
 
-def test_chat_ofrece_contacto_tras_dos_rondas_de_aclaracion(monkeypatch):
+def test_chat_aun_pide_aclaracion_despues_de_dos_respuestas(monkeypatch):
     monkeypatch.setattr(
         main_module,
         "generar_respuesta",
@@ -392,8 +392,90 @@ def test_chat_ofrece_contacto_tras_dos_rondas_de_aclaracion(monkeypatch):
     )
 
     assert response.status_code == 200
+    assert response.json()["contact_required"] is False
+    assert response.json()["answer"].endswith("?")
+
+
+def test_chat_ofrece_contacto_despues_de_tres_respuestas_de_aclaracion(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        main_module,
+        "generar_respuesta",
+        lambda question, diagnosis, history: "No encontramos una guía suficiente.",
+    )
+    response = client.post(
+        "/agent/chat",
+        json={
+            "question": "El problema sigue igual",
+            "user_id": "USR-1042",
+            "history": [
+                {"role": "user", "content": "La cafetera no funciona"},
+                {"role": "assistant", "content": "¿Desde cuándo ocurre?"},
+                {"role": "user", "content": "Desde esta manana"},
+                {"role": "assistant", "content": "¿Qué intentaste?"},
+                {"role": "user", "content": "Reinicie el equipo"},
+                {"role": "assistant", "content": "¿Qué mensaje aparece ahora?"},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
     assert response.json()["contact_required"] is True
     assert response.json()["ticket_request_id"]
+
+
+def test_chat_escala_guia_no_resuelta_despues_de_tres_respuestas(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", "")
+    service = TicketService(tmp_path / "tickets.sqlite3")
+    monkeypatch.setattr(main_module, "ticket_service", service)
+    monkeypatch.setattr(
+        main_module,
+        "generar_respuesta",
+        lambda question, diagnosis, history: "Probemos una verificación adicional.",
+    )
+    history = [
+        {"role": "user", "content": "No tengo internet"},
+        {"role": "assistant", "content": "¿Afecta a otros equipos?"},
+        {"role": "user", "content": "A todos los equipos"},
+        {"role": "assistant", "content": "¿Qué luces muestra el router?"},
+        {"role": "user", "content": "Las luces están encendidas"},
+        {"role": "assistant", "content": "¿Sigue fallando la conexión?"},
+    ]
+    chat_response = client.post(
+        "/agent/chat",
+        json={
+            "question": "Sigue sin funcionar",
+            "user_id": "USR-1042",
+            "history": history,
+        },
+    )
+
+    assert chat_response.status_code == 200
+    chat_data = chat_response.json()
+    assert chat_data["needs_approval"] is False
+    assert chat_data["contact_required"] is True
+    assert chat_data["ticket_request_id"]
+
+    ticket_response = client.post(
+        "/agent/tickets",
+        json={
+            "question": "Sigue sin funcionar",
+            "user_id": "USR-1042",
+            "history": history,
+            "request_id": str(chat_data["ticket_request_id"]),
+            "consent_to_email": True,
+            "contact": {
+                "name": "Javier Perez",
+                "email": "javier@example.com",
+                "phone": "+57 300 123 4567",
+            },
+        },
+    )
+    assert ticket_response.status_code == 201
+    assert ticket_response.json()["status"] == "open"
 
 
 def test_chat_permite_solicitar_tecnico_antes_de_tres_turnos(monkeypatch):
@@ -444,7 +526,8 @@ def test_chat_analiza_imagen_temporal_sin_persistirla(tmp_path, monkeypatch):
     )
 
     assert response.status_code == 200
-    assert response.json()["answer"] == "El error visible es E-104."
+    assert response.json()["answer"].startswith("El error visible es E-104.")
+    assert response.json()["answer"].endswith("?")
     assert observed["exists_during_analysis"] is True
     assert observed["path"].is_file() is False
 

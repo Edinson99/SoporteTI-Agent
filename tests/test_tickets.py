@@ -1,4 +1,5 @@
 import base64
+import html
 import json
 import sqlite3
 from email import policy
@@ -118,7 +119,11 @@ def test_ticket_envia_correo_con_firma_de_gmail_api(tmp_path, monkeypatch):
     monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", str(token_file))
     monkeypatch.setattr("app.tickets.Credentials", FakeCredentials)
     monkeypatch.setattr("app.tickets.build", lambda *args, **kwargs: FakeGmail())
-    resultado = _create_ticket(TicketService(tmp_path / "tickets.sqlite3"))
+    malicious_question = "La aplicación falla <script>alert('test')</script>"
+    resultado = _create_ticket(
+        TicketService(tmp_path / "tickets.sqlite3"),
+        question=malicious_question,
+    )
 
     assert resultado["ticket_email_status"] == "sent"
     assert capturado["token_path"] == str(token_file)
@@ -131,6 +136,7 @@ def test_ticket_envia_correo_con_firma_de_gmail_api(tmp_path, monkeypatch):
     assert message["From"] == "soporte@example.com"
     assert message["To"] == "tecnico@example.com"
     assert message["Cc"] == "javier@example.com"
+    assert "[NORMAL]" in message["Subject"]
     assert resultado["incident_id"] in message["Subject"]
     text_content = message.get_body(preferencelist=("plain",)).get_content()
     assert "USR-1042" in text_content
@@ -142,6 +148,11 @@ def test_ticket_envia_correo_con_firma_de_gmail_api(tmp_path, monkeypatch):
     assert "El problema empezo hoy" in text_content
     html_content = message.get_body(preferencelist=("html",)).get_content()
     assert "<div>Saludos,<br><b>Javier</b></div>" in html_content
+    assert "Requiere revisión técnica" in html_content
+    assert "Descripción del problema" in html_content
+    assert "background:#102a43" in html_content
+    assert html.escape(malicious_question) in html_content
+    assert "<script>" not in html_content
 
 
 def test_fallo_gmail_api_no_pierde_ticket_y_queda_reportado(tmp_path, monkeypatch):

@@ -60,12 +60,13 @@ no se adjuntan al correo. La base local determina las guias, evidencias y pasos
 antes de enviar el resultado al modelo. El transporte MCP sigue disponible
 para sesiones interactivas de Hermes.
 
-El chat puede recopilar hasta dos respuestas de seguimiento antes de ofrecer
-el formulario de contacto, salvo que el usuario solicite contactar al tecnico
-directamente. Admite hasta tres imagenes JPG, PNG o WebP de 2 MiB cada una;
-valida MIME y firma binaria. El contenido de imagen y web se considera no
-confiable. La UI solo convierte en enlaces HTTPS los dominios oficiales que
-tiene permitidos.
+El chat formula una pregunta para que el usuario pueda continuar. Si la
+incidencia sigue sin resolverse, ofrece el formulario de contacto tras tres
+respuestas del usuario a partir de la consulta inicial, incluso si se encontró
+una guía local; la solicitud explícita de contacto adelanta el formulario.
+Admite hasta tres imágenes JPG, PNG o WebP de 2 MiB cada una; valida MIME y
+firma binaria. El contenido de imagen y web se considera no confiable. La UI
+solo convierte en enlaces HTTPS los dominios oficiales que tiene permitidos.
 
 La ruta es solo loopback y requiere Hermes en WSL. Pregunta, contexto,
 diagnostico local, historial y las capturas del turno se envian al proveedor
@@ -246,7 +247,10 @@ devuelve escalacion pendiente de aprobacion. Para cerrar Hermes, usa `Ctrl+D`.
 ## Correo de escalacion y firma Gmail (opcional)
 
 El envío de correo se ejecuta en la aplicación local de Windows, separado del
-Hermes que corre en WSL. Configura Gmail API OAuth siguiendo las
+Hermes que corre en WSL. Los avisos incluyen una versión HTML con prioridad,
+resumen del problema, contacto, contexto, conversación y firma Gmail; también
+mantienen una versión de texto plano para clientes que no muestran HTML.
+Configura Gmail API OAuth siguiendo las
 [notas de versión 1.3.5](version-1.3.5.md). En resumen: habilita Gmail API en
 Google Cloud, crea credenciales OAuth de escritorio, guarda el JSON en
 `.secrets/gmail-oauth-client.json` y ejecuta desde PowerShell la autorización:

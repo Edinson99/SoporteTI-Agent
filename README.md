@@ -28,7 +28,7 @@ Describe el problema; SoporteTI-Agent busca una guía local, devuelve recomendac
 - ❓ Preguntar por sistema operativo, alcance, mensaje de error y cambios recientes cuando falten esos datos.
 - 🖼️ Analizar hasta tres capturas de pantalla y leer códigos de error visibles.
 - 🌐 Consultar documentación oficial en la web cuando las guías locales no basten.
-- 🙋 Pedir nombre, correo y teléfono antes de crear y notificar un ticket sin guía.
+- 🙋 Pedir nombre, correo y teléfono antes de crear y notificar un ticket sin guía o sin solución tras el seguimiento.
 - 📋 Permitir al técnico revisar tickets locales, registrar una nota y marcarlos resueltos.
 - 🔌 Ofrecer diagnóstico local mediante API HTTP, AWS Lambda o MCP; el chat web puede redactar la respuesta mediante Hermes y el modelo configurado en la estación.
 - ✅ Validar las solicitudes y responder con un contrato JSON consistente.
@@ -108,9 +108,11 @@ En la interfaz web, abre **Datos para afinar el diagnóstico (opcional)** para
 indicar el sistema operativo, el alcance, el mensaje o código de error y los
 cambios recientes. También puedes adjuntar hasta tres capturas JPG, PNG o WebP
 (máximo 2 MiB cada una). Oculta antes cualquier dato personal o confidencial.
-El agente puede hacer preguntas de seguimiento para reunir información; solo
-tras varias respuestas sin una guía suficiente ofrece el formulario para
-contactar al técnico, salvo que lo solicites directamente.
+El agente hará una pregunta concreta para continuar. Si no encuentra guía,
+después de tres respuestas tuyas tras la consulta inicial ofrece el formulario
+para contactar al técnico; puedes solicitarlo antes. El correo al técnico usa
+un diseño HTML más claro con prioridad, contacto, contexto y conversación, y
+mantiene la firma de Gmail.
 
 El chat web envía la incidencia, el contexto y el diagnóstico local al Hermes
 CLI de WSL, que utiliza el proveedor/modelo configurado en Hermes para redactar
@@ -124,7 +126,9 @@ el modelo.
 
 Cuando no hay una guía suficiente, Hermes puede buscar documentación oficial
 con enlaces y redactar pasos seguros; las capturas se analizan con la
-herramienta de visión. El chat pregunta si se desea contactar al técnico.
+herramienta de visión. Si después de tres respuestas tuyas la incidencia sigue
+sin resolverse, el chat ofrece contactar al técnico aunque hubiera encontrado
+una guía.
 Solo tras marcar la autorización y enviar nombre, correo y teléfono se guarda
 un ticket y se intenta notificarlo; el correo incluye al usuario en copia y
 usa la firma configurada en Gmail cuando Gmail API OAuth está autorizado. En

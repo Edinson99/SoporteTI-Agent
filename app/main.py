@@ -300,6 +300,25 @@ def _requests_technician(question: str, history: list[dict[str, str]]) -> bool:
     return False
 
 
+def _ensure_chat_follow_up(
+    answer: str,
+    follow_up_questions: list[str],
+    recommended_actions: list[str],
+) -> str:
+    if answer.rstrip().endswith("?"):
+        return answer
+    question = (
+        follow_up_questions[0]
+        if follow_up_questions
+        else (
+            "¿Pudiste probar alguno de los pasos recomendados y qué resultado obtuviste?"
+            if recommended_actions
+            else "¿Qué ocurre exactamente cuando intentas usarlo y qué mensaje aparece?"
+        )
+    )
+    return f"{answer.rstrip()}\n\nPara continuar: {question}"
+
+
 @app.post("/agent/chat", response_model=AgentAskResponse)
 def chat_with_hermes(req: AgentChatRequest, request: Request) -> AgentAskResponse:
     """Genera un diagnostico local y lo redacta con el modelo configurado en Hermes."""
@@ -321,8 +340,8 @@ def chat_with_hermes(req: AgentChatRequest, request: Request) -> AgentAskRespons
     user_turn_count = len(prior_user_messages) + 1
     explicit_contact_request = _requests_technician(req.question, historial)
     result_needs_approval = resultado["needs_approval"]
-    resultado["contact_required"] = result_needs_approval and (
-        user_turn_count >= 3 or explicit_contact_request
+    resultado["contact_required"] = (
+        user_turn_count >= 4 or explicit_contact_request
     )
     if result_needs_approval and not resultado["contact_required"] and not resultado["follow_up_questions"]:
         resultado["follow_up_questions"] = [
@@ -352,6 +371,12 @@ def chat_with_hermes(req: AgentChatRequest, request: Request) -> AgentAskRespons
                 )
     except HermesBridgeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if not resultado["contact_required"]:
+        resultado["answer"] = _ensure_chat_follow_up(
+            resultado["answer"],
+            resultado["follow_up_questions"],
+            resultado["recommended_actions"],
+        )
     resultado["chat_model_status"] = "used"
     if resultado["contact_required"]:
         resultado["ticket_request_id"] = uuid4()
@@ -360,7 +385,7 @@ def chat_with_hermes(req: AgentChatRequest, request: Request) -> AgentAskRespons
 
 @app.post("/agent/tickets", response_model=TicketCreateResponse, status_code=201)
 def create_support_ticket(req: TicketCreateRequest, request: Request) -> TicketCreateResponse:
-    """Crea y notifica un ticket sin guia despues de recibir el contacto."""
+    """Crea un ticket consentido cuando el chat no resuelve la incidencia."""
     if not _is_loopback_request(request):
         raise HTTPException(status_code=403, detail="La creacion de tickets es solo local.")
     if not req.consent_to_email:
@@ -381,10 +406,19 @@ def create_support_ticket(req: TicketCreateRequest, request: Request) -> TicketC
         req.user_id,
         context,
     )
-    if not resultado["needs_approval"]:
+    contact_turn_count = len(prior_user_messages) + 1
+    explicit_contact_request = _requests_technician(req.question, historial)
+    if not (
+        resultado["needs_approval"]
+        or contact_turn_count >= 4
+        or explicit_contact_request
+    ):
         raise HTTPException(
             status_code=409,
-            detail="Hay una guia de conocimiento para esta consulta; no se creo un ticket.",
+            detail=(
+                "Continúa el autodiagnóstico o solicita contactar al técnico "
+                "antes de crear el ticket."
+            ),
         )
 
     try:
@@ -394,7 +428,14 @@ def create_support_ticket(req: TicketCreateRequest, request: Request) -> TicketC
             user_id=req.user_id,
             category=resultado["category"],
             priority=resultado["priority"],
-            diagnosis=resultado["escalation_reason"] or resultado["diagnosis"]["summary"],
+            diagnosis=(
+                resultado["escalation_reason"]
+                or (
+                    resultado["diagnosis"]["summary"]
+                    if resultado["needs_approval"]
+                    else "El usuario solicita revisión técnica tras el autodiagnóstico."
+                )
+            ),
             context=context,
             history=[mensaje.model_dump() for mensaje in req.history],
             contact_name=req.contact.name,

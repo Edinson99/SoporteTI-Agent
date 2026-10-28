@@ -69,7 +69,7 @@ Contrato de API de SoporteTI-Agent v1.3.7.
 - `incident_id`: se asigna al confirmar los datos de contacto en `POST /agent/tickets`.
 - `ticket_email_status`: estado del correo después de confirmar el ticket.
 - `ticket_request_id`: identificador temporal para que un reintento de confirmación no cree tickets duplicados.
-- `contact_required`: indica que no se encontró guía y el chat debe solicitar nombre, correo y teléfono.
+- `contact_required`: el chat debe mostrar el formulario de contacto porque no hay guía suficiente, el usuario lo pidió explícitamente o ya respondió tres veces a las preguntas de seguimiento sin resolver la incidencia.
 - `chat_model_status`: `used` en cada turno de `/agent/chat`, incluso si no se encuentra guía; `null` en el endpoint determinista `/agent/ask`.
 - `category` y `priority`: clasificación heurística del caso.
 - `diagnosis`: resumen, hipótesis ordenadas y pruebas sugeridas; no afirma una causa confirmada.
@@ -150,10 +150,12 @@ un error. `attachments` admite hasta tres imágenes JPG, PNG o WebP de máximo
 imagen o página web se trata como dato no confiable. La interfaz solo hace
 clicables enlaces HTTPS de dominios oficiales permitidos.
 
-Si no encuentra guía, la interfaz permite recopilar hasta tres turnos del
-usuario (la consulta inicial y dos respuestas de seguimiento) antes de mostrar
-el formulario de contacto; una petición explícita para contactar al técnico
-permite mostrarlo antes. Todavía no crea ni envía el ticket. Para consultas
+Si no encuentra guía, la interfaz hace una pregunta concreta para continuar
+después de la primera consulta y mantiene el seguimiento durante tres
+respuestas del usuario. Tras la tercera respuesta (cuarto mensaje del usuario,
+contando la consulta inicial) muestra el formulario de contacto. Una petición
+explícita para contactar al técnico permite mostrarlo antes. Todavía no crea ni
+envía el ticket. Para consultas
 con guía, el modelo redacta la respuesta; los errores de Hermes se devuelven
 explícitamente. El historial y las capturas permanecen solo en la memoria de
 la página mientras dura la sesión y se pierden al recargar.
@@ -167,8 +169,9 @@ envía el ticket antes de que el usuario lo autorice. El correo dirigido al
 técnico incluye al usuario en copia (`Cc`). La conversación incluye el
 historial previo, la consulta y la respuesta del asistente.
 
-El endpoint es de loopback y rechaza consultas que ya tengan guía. `request_id`
-hace idempotente la confirmación y evita tickets duplicados en reintentos. Por
+El endpoint es de loopback y rechaza una consulta que ya tenga guía si aún no
+hubo tres respuestas de seguimiento y tampoco se pidió contacto explícitamente.
+`request_id` hace idempotente la confirmación y evita tickets duplicados en reintentos. Por
 defecto, los tickets se guardan en `data/tickets.sqlite3` (o en
 `SOPORTE_TICKETS_DB`). Si el correo no está configurado o falla, el ticket
 permanece guardado y la respuesta devuelve su estado.
@@ -211,8 +214,9 @@ uses el backend Firebase desde ese despliegue sin preparar y proteger ambos.
 
 ### `POST /agent/tickets`
 
-Confirma la escalación del chat y crea el ticket únicamente si el diagnóstico
-sigue sin encontrar una guía. Requiere loopback.
+Confirma la escalación del chat cuando el diagnóstico no encuentra guía, tras
+tres respuestas del usuario sin resolver la incidencia, o por solicitud
+explícita de contacto. Requiere loopback y consentimiento.
 
 ```json
 {
