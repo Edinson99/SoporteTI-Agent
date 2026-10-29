@@ -4,7 +4,7 @@
 
 SoporteTI-Agent ya ofrece diagnóstico local basado en guías versionadas,
 conversación mediante Hermes, tickets con consentimiento y persistencia SQLite
-o Firebase Data Connect. La siguiente fase propone mejorar la recuperación de
+o Firebase Data Connect si este no tiene conocimiento a la mano hace consultas web desde fuentes confiables. La siguiente fase propone mejorar la recuperación de
 conocimiento, aprender de las resoluciones verificadas y reforzar la operación
 sin sustituir el control humano ni cambiar silenciosamente el comportamiento
 actual.
