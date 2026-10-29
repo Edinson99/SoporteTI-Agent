@@ -190,3 +190,8 @@ de despliegue, autenticacion, autorizacion de tecnicos, controles de privacidad
 y retencion, RAG, herramientas remotas autorizadas y revision de articulos.
 Las recomendaciones siguen siendo informativas y deben escalarse si no
 coinciden con el entorno institucional.
+
+La [fase de mejora propuesta](fase-mejora.md) describe opciones para evolucionar
+la recuperacion de conocimiento, la observabilidad y los canales de soporte.
+Es una hoja de ruta pendiente de decisiones; no modifica el comportamiento ni
+la arquitectura implementada actualmente.

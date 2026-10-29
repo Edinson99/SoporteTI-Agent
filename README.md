@@ -17,6 +17,11 @@ Gmail; la 1.3.6 mejoró la gestión local de tickets. Consulta las
 [notas 1.3.1](docs/version-1.3.1.md) y las
 [notas 1.3.0](docs/version-1.3.md).
 
+> **Siguiente fase propuesta:** evolución hacia recuperación semántica,
+> conocimiento revisado a partir de resoluciones y mejoras de observabilidad e
+> integraciones. Es una hoja de ruta, no funcionalidad disponible en la versión
+> actual. Consulta la [fase de mejora propuesta](docs/fase-mejora.md).
+
 Describe el problema; SoporteTI-Agent busca una guía local, devuelve recomendaciones con su fuente y, cuando no encuentra una respuesta, solicita revisión humana en lugar de inventar una solución.
 
 > **Estado actual:** el diagnóstico local es determinista y se basa en palabras clave y una base de conocimiento versionada. El chat web usa el Hermes CLI instalado localmente para redactar respuestas con el modelo configurado en Hermes; la API de diagnóstico local sigue disponible sin Hermes.
