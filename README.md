@@ -2,11 +2,21 @@
 
 **Un asistente de soporte TI que convierte incidencias comunes en pasos claros y seguros.**
 
-**Versión actual: 1.3.8.** El chat responde en español sin tildes ni `ñ`,
+**Versión actual: 1.4.0.** El chat responde en español sin tildes ni `ñ`,
 puede hacer preguntas de seguimiento, consultar documentación oficial y analizar
-capturas antes de escalar un caso.
-La versión 1.3.5 incorporó el envío por Gmail API con la firma configurada en
-Gmail; la 1.3.6 mejoró la gestión local de tickets. Consulta las
+capturas antes de escalar un caso. La búsqueda semántica local es opcional y
+complementa la búsqueda por palabras clave sin enviar consultas a un proveedor
+de embeddings. El chat permite valorar guías y guarda localmente solo la guía,
+el voto y la fecha por un máximo de 180 días. Las etapas 2–5 de la fase de
+mejora incorporan observabilidad filtrada, notificaciones resilientes,
+Telegram de una sola consulta, ciclo de vida de capturas y estado del servicio.
+Consulta las
+[notas 1.4.0](docs/version-1.4.0.md),
+[notas 1.3.13](docs/version-1.3.13.md),
+[notas 1.3.12](docs/version-1.3.12.md),
+[notas 1.3.11](docs/version-1.3.11.md),
+[notas 1.3.10](docs/version-1.3.10.md), las
+[notas 1.3.9](docs/version-1.3.9.md), las
 [notas 1.3.8](docs/version-1.3.8.md), las
 [notas 1.3.7](docs/version-1.3.7.md), las
 [notas 1.3.6](docs/version-1.3.6.md), las
@@ -17,18 +27,24 @@ Gmail; la 1.3.6 mejoró la gestión local de tickets. Consulta las
 [notas 1.3.1](docs/version-1.3.1.md) y las
 [notas 1.3.0](docs/version-1.3.md).
 
-> **Siguiente fase propuesta:** evolución hacia recuperación semántica,
-> conocimiento revisado a partir de resoluciones y mejoras de observabilidad e
-> integraciones. Es una hoja de ruta, no funcionalidad disponible en la versión
-> actual. Consulta la [fase de mejora propuesta](docs/fase-mejora.md).
+> **Fase de mejora:** las versiones 1.3.9 y 1.3.10 añaden recuperación
+> semántica opcional y su benchmark; la 1.3.11 incorpora feedback mínimo local;
+> la 1.3.12 mejora consultas sobre macros de Excel y la 1.3.13 amplía la
+> recuperación de paráfrasis. La 1.4.0 completa las etapas 2–5. La aprobación
+> de conocimiento derivado de tickets sigue pendiente en la
+> [hoja de ruta](docs/fase-mejora.md). Los resultados y pendientes de las
+> pruebas reales están en el [informe de integraciones](docs/validacion-integraciones-2026-11-11.md).
 
 Describe el problema; SoporteTI-Agent busca una guía local, devuelve recomendaciones con su fuente y, cuando no encuentra una respuesta, solicita revisión humana en lugar de inventar una solución.
 
-> **Estado actual:** el diagnóstico local es determinista y se basa en palabras clave y una base de conocimiento versionada. El chat web usa el Hermes CLI instalado localmente para redactar respuestas con el modelo configurado en Hermes; la API de diagnóstico local sigue disponible sin Hermes.
+> **Estado actual:** el diagnóstico local usa por defecto palabras clave y una base de conocimiento versionada; la búsqueda semántica local puede habilitarse por separado. El chat web usa el Hermes CLI instalado localmente para redactar respuestas con el modelo configurado en Hermes; la API de diagnóstico local sigue disponible sin Hermes.
 
 ## ✨ ¿Qué puede hacer?
 
 - 🔎 Buscar y ordenar varias guías coincidentes en la base de conocimiento local, normalizando mayúsculas, acentos y puntuación.
+- 🧠 Añadir recuperación semántica local opcional mediante embeddings multilingües, conservando el respaldo léxico.
+- 👍 Valorar la utilidad de una guía sin guardar la pregunta, conversación ni identidad del usuario.
+- 📈 Medir solicitudes, errores y latencias agregadas en memoria; limitar solicitudes y, si se configura, enviar eventos depurados a Sentry.
 - 🧭 Entregar pasos seguros, el identificador de la guía y la siguiente acción recomendada.
 - 🧑‍💻 Aceptar contexto opcional del equipo, como dispositivo y sistema operativo.
 - 🧪 Proponer hipótesis provisionales y pruebas de descarte a partir de las guías y de comprobaciones de red reportadas por el usuario.
@@ -39,7 +55,9 @@ Describe el problema; SoporteTI-Agent busca una guía local, devuelve recomendac
 - 📋 Permitir al técnico revisar tickets locales, registrar una nota y marcarlos resueltos.
 - 🔌 Ofrecer diagnóstico local mediante API HTTP, AWS Lambda o MCP; el chat web puede redactar la respuesta mediante Hermes y el modelo configurado en la estación.
 - ✅ Validar las solicitudes y responder con un contrato JSON consistente.
-- ✉️ Enviar correos de ticket con la firma de Gmail y texto sin tildes ni `ñ`.
+- ✉️ Enviar correos de ticket por Gmail con respaldo opcional de Resend, estados de entrega y alerta Slack mínima para prioridad alta.
+- 📱 Atender una consulta por Telegram con guías locales, sin guardar mensajes ni historial.
+- 🟢 Mostrar el estado de la API y la configuración de dependencias en una página que no bloquea el soporte.
 
 ### Temas cubiertos
 
@@ -49,7 +67,11 @@ Las guías de diagnóstico avanzado priorizan comprobaciones de solo lectura y
 escalamiento. No recomiendan desactivar controles de seguridad, modificar
 particiones o firmware, abrir equipos ni terminar procesos sin autorización.
 
-La búsqueda sigue siendo determinista por palabras completas; no es semántica ni RAG. La confianza expresa relevancia heurística de una coincidencia, no certeza de causa raíz.
+La búsqueda por palabras completas sigue activa. Si se habilita la búsqueda
+semántica, los embeddings multilingües se ejecutan localmente y sus resultados
+se combinan con los léxicos; el umbral inicial provisional es `0.65` y requiere
+evaluación con consultas representativas. La
+confianza expresa relevancia heurística, no certeza de causa raíz.
 
 ## 🚀 Inicio rápido en Windows
 
@@ -67,9 +89,85 @@ El script de configuración crea el entorno virtual, instala las dependencias y 
 - **Interfaz gráfica del agente:** `http://127.0.0.1:8000`
 - **API:** `http://127.0.0.1:8000/agent/ask`
 - **Documentación interactiva:** `http://127.0.0.1:8000/docs`
-- **Estado del servicio:** `http://127.0.0.1:8000/health`
+- **Estado del servicio:** `http://127.0.0.1:8000/status`
+- **Health check de vida:** `http://127.0.0.1:8000/health`
 
 Para omitir las pruebas durante la instalación, usa `.\scripts\setup.ps1 -SkipTests`. Para elegir otro puerto, inicia con `.\scripts\start.ps1 -Port 8080`.
+
+La búsqueda semántica está desactivada por defecto. Para habilitarla, instala
+la dependencia local opcional y configura `SOPORTE_SEMANTIC_SEARCH=true` en
+`.env`:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-semantic.txt
+```
+
+El modelo se descarga en el primer uso, por lo que ese primer inicio necesita
+acceso a Internet. Las preguntas y guías se procesan localmente después de
+descargarlo. Si no se puede inicializar el modelo, el error se informa y no se
+sustituye silenciosamente por una respuesta semántica vacía. La dependencia
+opcional se mantiene fuera de `requirements.txt` para no ampliar el paquete de
+AWS Lambda; los despliegues Lambda siguen usando búsqueda léxica.
+
+Para medir la recuperación antes de habilitarla en un entorno real, ejecuta el
+benchmark de consultas sintéticas (requiere la dependencia y el modelo local):
+
+```powershell
+.\.venv\Scripts\python.exe scripts\evaluate_retrieval.py
+```
+
+El informe separa consultas léxicas, paráfrasis y casos sin guía; revisa también
+las discrepancias antes de cambiar el umbral.
+
+El chat muestra una valoración opcional en las respuestas que utilizan una
+guía local. Solo se conserva el identificador de la guía, el voto y la fecha
+UTC, con eliminación automática después de 180 días. No se guardan preguntas,
+conversaciones, usuario ni datos de contacto. Los conteos agregados se pueden
+consultar localmente en `GET /api/feedback/summary`; la ruta está restringida
+a loopback. La base está en `data/feedback.sqlite3` por defecto y se puede
+reubicar con `SOPORTE_FEEDBACK_DB`.
+
+## 📊 Observabilidad, avisos y Telegram (opcionales)
+
+El límite de uso predeterminado es 60 solicitudes por minuto y ruta/origen de
+conexión. Cambia `SOPORTE_RATE_LIMIT_PER_MINUTE` en `.env`; el contador de
+latencia, errores y solicitudes vive solo en memoria y `GET /api/metrics`
+requiere loopback. No se guardan IP, preguntas, conversaciones, imágenes ni
+datos de contacto en estas métricas. El límite es por proceso y no coordina
+instancias distribuidas.
+
+Para enviar excepciones a Sentry instala
+`.\.venv\Scripts\python.exe -m pip install -r requirements-observability.txt`
+y configura `SENTRY_DSN`. Se omiten cuerpos, URL, identidad, mensajes de error,
+variables locales y breadcrumbs antes del envío; permanecen solo tipo de
+excepción y marcos mínimos. Sentry no se habilita sin DSN.
+
+Gmail sigue siendo el correo principal; si falla o no está configurado, Resend
+puede actuar como respaldo con `RESEND_API_KEY`, `RESEND_FROM` y
+`RESEND_TO_EMAIL`. Configura `SLACK_WEBHOOK_URL` para alertas de tickets
+`high`/`critical`: Slack recibe solo número, categoría y prioridad. El panel
+muestra el proveedor y estado final, incluida la clasificación
+`configuration`/`transient` de fallos de correo.
+
+El canal MTProto de cuenta personal se ejecuta como proceso separado y solo
+responde a `/start` y `/consulta <problema>` en chats privados de IDs incluidos
+en `TELEGRAM_MTPROTO_ALLOWED_USER_IDS`. No crea tickets ni conserva mensajes o
+historial. Instala `requirements-telegram-mtproto.txt`, configura
+`TELEGRAM_MTPROTO_API_ID`, `TELEGRAM_MTPROTO_API_HASH` y la lista de IDs en el `.env` local. Instala la
+dependencia opcional y ejecuta:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-telegram-mtproto.txt
+.\.venv\Scripts\python.exe -m scripts.telegram_mtproto
+```
+
+En el primer inicio, Telethon solicita el teléfono, el código de Telegram y,
+si está habilitada, la contraseña 2FA directamente en la consola. La sesión
+autenticada se guarda en `.secrets/telegram-mtproto.session`; protégela como
+una credencial con acceso a la cuenta. No compartas la sesión ni registres
+mensajes. La alternativa legacy de Bot API sigue disponible como webhook HTTPS
+si se configura por separado con `TELEGRAM_BOT_TOKEN` y
+`TELEGRAM_WEBHOOK_SECRET`.
 
 ## 💬 Cómo usarlo
 
@@ -229,14 +327,16 @@ La API, Lambda, MCP y el chat web comparten la lógica determinista de diagnóst
 - El agente **recomienda**, pero no ejecuta comandos ni modifica el equipo; los resultados de `network_checks` no se verifican desde el servidor.
 - No instala software ni cambia contraseñas. Los tickets solo se crean cuando no hay guía y se guardan en SQLite (predeterminado) o, si se configura, en Firebase Data Connect; no se envían a una mesa de servicio externa.
 - El correo requiere credenciales OAuth de Gmail API guardadas localmente en `.secrets/`; no deben incluirse en el repositorio.
+- Las claves Resend, el webhook Slack y las credenciales MTProto/sesión Telegram deben permanecer en el entorno local y `.secrets/`, nunca en el repositorio. La cuenta personal solo responde a IDs permitidos. Slack recibe únicamente identificador de ticket, prioridad y categoría; el correo de respaldo transmite el contenido y contacto autorizados por el usuario a Resend.
+- Los eventos Sentry no contienen contenido de solicitudes. Las métricas locales son en memoria; no son un sistema distribuido de telemetría.
 - El ticket conserva la conversación, el texto de la consulta y los datos de contacto en el backend seleccionado. Protege la base SQLite o el proyecto Firebase y no incluyas credenciales ni datos confidenciales en el chat.
 - El panel de seguimiento contiene datos personales y solo está protegido por acceso loopback; úsalo únicamente en un equipo local de confianza. No ofrece autenticación de técnicos.
 - La base de conocimiento está versionada localmente. El diagnóstico estructurado no consulta servicios externos; la búsqueda web solo está disponible en el chat Hermes.
 - El chat web envía la pregunta, el resultado local de diagnóstico y hasta diez turnos previos al modelo configurado en Hermes. El historial vive solo en la memoria de la página y se pierde al recargar.
 - Hermes puede usar la búsqueda web acotada; cuando hay capturas también se activa visión. La ruta web no habilita terminal ni ejecución de comandos.
 - La pregunta, el contexto, el historial y las capturas del turno se envían al proveedor configurado mediante Hermes. No incluyas información confidencial en el chat ni en las capturas.
-- Las imágenes se conservan en el ticket solo después del consentimiento para escalar el caso; se muestran en el panel local y no se adjuntan al correo.
-- La búsqueda no es semántica y las cifras de confianza no están calibradas clínicamente ni estadísticamente; expresan solo la fuerza relativa de la coincidencia.
+- Las imágenes se conservan en el almacenamiento privado de tickets solo después del consentimiento; no se adjuntan a correos ni avisos Slack. Se eliminan al resolver el ticket o al cumplir 180 días (limpieza al consultar tickets/adjuntos).
+- La búsqueda semántica es opcional; las cifras de confianza no están calibradas estadísticamente y expresan solo relevancia heurística.
 - No incluyas contraseñas, códigos de verificación, claves API ni información confidencial en las solicitudes.
 - La API no implementa autenticación. Protege el acceso antes de cualquier despliegue accesible por otras personas.
 

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Estado del servicio | Soporte TI</title>
+  <style>
+    :root { color-scheme: light; --ink: #15243a; --muted: #64748b; --line: #e2e8f0; --surface: #fff; --canvas: #f5f7fb; --green: #167347; --amber: #825c00; --red: #b42318; --blue: #2868e8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); font-family: "Segoe UI", Arial, sans-serif; }
+    main { width: min(760px, calc(100% - 32px)); margin: 42px auto; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 22px; }
+    h1 { margin: 0 0 5px; font-size: 28px; }
+    p { color: var(--muted); }
+    a { color: var(--blue); font-weight: 650; text-decoration: none; }
+    .overall, .component { padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+    .overall { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; background: #94a3b8; }
+    .operational .dot { background: var(--green); }
+    .unavailable .dot { background: var(--amber); }
+    #components { display: grid; gap: 9px; }
+    .component { display: flex; justify-content: space-between; gap: 12px; }
+    .component-value { color: var(--muted); text-align: right; }
+    #updated, #message { font-size: 13px; }
+    @media (max-width: 560px) { header { align-items: start; flex-direction: column; } main { margin-top: 24px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Estado del servicio</h1>
+        <p>Estado general de la API. Las dependencias externas se informan como configuración, no como una prueba activa.</p>
+      </div>
+      <nav aria-label="Enlaces de servicio">
+        <a id="telegram-link" hidden></a>
+        <a href="/">Volver al chat</a>
+      </nav>
+    </header>
+    <section id="overall" class="overall unavailable" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span>
+      <strong id="summary">Consultando estado...</strong>
+    </section>
+    <section id="components" aria-label="Componentes"></section>
+    <p id="updated"></p>
+    <p id="message" role="status"></p>
+  </main>
+  <script>
+    const labels = {
+      api: "API",
+      ticket_store: "Almacenamiento de tickets",
+      semantic_search: "Búsqueda semántica",
+      email: "Correo",
+      alerts: "Avisos al equipo",
+      telegram: "Canal Telegram"
+    };
+    const states = {
+      operational: "Operativo",
+      configured: "Configurado; disponibilidad no comprobada",
+      not_configured: "No configurado",
+      enabled: "Activado",
+      disabled: "Desactivado",
+      misconfigured: "Configuración no válida",
+      misconfigured: "Configuración no válida"
+    };
+
+    async function refreshStatus() {
+      const overall = document.getElementById("overall");
+      const summary = document.getElementById("summary");
+      const list = document.getElementById("components");
+      const updated = document.getElementById("updated");
+      const message = document.getElementById("message");
+      try {
+        const response = await fetch("/api/status", { cache: "no-store" });
+        if (!response.ok) throw new Error("No se pudo consultar el estado.");
+        const data = await response.json();
+        if (data.telegram_url) {
+          const telegramLink = document.getElementById("telegram-link");
+          telegramLink.href = data.telegram_url;
+          telegramLink.rel = "noopener noreferrer";
+          telegramLink.target = "_blank";
+          telegramLink.textContent = "Abrir Telegram";
+          telegramLink.hidden = false;
+        }
+        const checkedAt = new Date(data.checked_at);
+        const stale = !Number.isFinite(checkedAt.getTime())
+          || Date.now() - checkedAt.getTime() > data.stale_after_seconds * 1000;
+        const available = data.components?.api === "operational" && !stale;
+        const degraded = data.status === "degraded";
+        overall.className = `overall ${available && !degraded ? "operational" : "unavailable"}`;
+        summary.textContent = stale
+          ? "Información desactualizada"
+          : !available
+            ? "Servicio no disponible"
+            : degraded
+              ? "API disponible; configuración degradada"
+              : "API operativa";
+        list.replaceChildren();
+        Object.entries(data.components || {}).forEach(([key, value]) => {
+          const item = document.createElement("div");
+          item.className = "component";
+          const name = document.createElement("strong");
+          name.textContent = labels[key] || "Componente";
+          const state = document.createElement("span");
+          state.className = "component-value";
+          state.textContent = states[value] || "Estado no disponible";
+          item.append(name, state);
+          list.append(item);
+        });
+        updated.textContent = `Última comprobación: ${checkedAt.toLocaleString()}.`;
+        message.textContent = stale ? "Actualiza la página para obtener información reciente." : "";
+      } catch {
+        overall.className = "overall unavailable";
+        summary.textContent = "No se pudo consultar el estado";
+        list.replaceChildren();
+        updated.textContent = "";
+        message.textContent = "El acceso al soporte sigue disponible aunque esta página no pueda cargar.";
+      }
+    }
+
+    refreshStatus();
+    window.setInterval(refreshStatus, 30000);
+  </script>
+</body>
+</html>

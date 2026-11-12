@@ -1,4 +1,4 @@
-# Contrato de la API v1.3.8
+# Contrato de la API v1.4.0
 
 Este archivo conserva la ruta de documentación utilizada en versiones
 anteriores. El contrato completo y vigente, incluidos esquemas, ejemplos,
@@ -12,6 +12,8 @@ validaciones y estados HTTP, está centralizado en
 | `GET /health` | Comprueba que la API responde. | API local o despliegue configurado |
 | `POST /agent/ask` | Diagnóstico determinista con la base de conocimiento local. | API |
 | `POST /agent/chat` | Diagnóstico local y respuesta de Hermes; web oficial cuando hace falta y visión si hay capturas. | Solo loopback |
+| `POST /api/feedback` | Registra una valoración local mínima asociada a una guía. | Solo loopback |
+| `GET /api/feedback/summary` | Devuelve conteos agregados de utilidad por guía. | Solo loopback |
 | `POST /agent/tickets` | Crea y notifica un ticket sin guía después de obtener datos de contacto y consentimiento. | Solo loopback |
 | `GET /tickets` | Interfaz local de seguimiento y gestión. | Solo loopback |
 | `GET /api/tickets` | Lista tickets y metadatos de adjuntos, sin incluir bytes de imagen. | Solo loopback |
@@ -37,6 +39,21 @@ local, la autorización y los permisos.
 - **1.3.8:** el chat responde en español sin tildes ni `ñ`; el correo normaliza
   también el asunto, el contenido y la firma de Gmail. Consulta las
   [notas 1.3.8](version-1.3.8.md).
+- **1.3.9–1.3.10:** recuperación semántica local opcional y benchmark de
+  consultas sintéticas. Consulta las notas
+  [1.3.9](version-1.3.9.md) y [1.3.10](version-1.3.10.md).
+- **1.3.11:** valoración opcional de guías con almacenamiento local por 180
+  días, sin guardar preguntas ni identidad del usuario. Consulta las
+  [notas 1.3.11](version-1.3.11.md).
+- **1.3.12:** mejora de recuperación y evaluación de paráfrasis para la guía de
+  Excel con macros. Consulta las [notas 1.3.12](version-1.3.12.md).
+- **1.3.13:** mejora la recuperación de paráfrasis de acceso a cuentas,
+  micrófono, VPN, impresora y proyector. Consulta las
+  [notas 1.3.13](version-1.3.13.md).
+- **1.4.0:** completa las etapas 2–5 con métricas minimizadas, límites por
+  proceso, Sentry opcional depurado, correo Resend de respaldo, alertas Slack
+  mínimas, Telegram de consulta puntual, retención de capturas y página de
+  estado. Consulta las [notas 1.4.0](version-1.4.0.md).
 
 La lógica determinista compartida no ejecuta comandos ni modifica equipos.
 El panel y las rutas de tickets no autentican técnicos; mantenlos en loopback

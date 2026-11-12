@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hmac
 import ipaddress
 import os
 import re
 import tempfile
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -20,29 +23,55 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.agent import AgenteSoporteTI
 from app.dataconnect_tickets import DataConnectError, FirebaseDataConnectTicketService
+from app.feedback import (
+    FeedbackStoreError,
+    LocalFeedbackStore,
+)
 from app.hermes_bridge import (
     HermesBridgeError,
     generar_respuesta,
     normalizar_respuesta,
 )
+from app.observability import (
+    RequestTelemetry,
+    SlidingWindowRateLimiter,
+    configure_sentry,
+    rate_limit_from_environment,
+)
 from app.tickets import TicketService
+from app.telegram_channel import (
+    TelegramDeliveryError,
+    TelegramUpdateIds,
+    command_response,
+    telegram_reply,
+)
+from app.tools import cargar_base_conocimiento
 
 
 agent = AgenteSoporteTI()
 UI_FILE = Path(__file__).parent / "static" / "index.html"
 TICKETS_UI_FILE = Path(__file__).parent / "static" / "tickets.html"
+STATUS_UI_FILE = Path(__file__).parent / "static" / "status.html"
 _IMAGE_EXTENSIONS = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
     "image/webp": ".webp",
 }
 _MAX_CHAT_HISTORY_MESSAGE_LENGTH = 4000
+_telegram_updates = TelegramUpdateIds()
+_sentry_enabled = configure_sentry()
 
 app = FastAPI(
     title="SoporteTI-Agent API",
     description="Agente de soporte TI con diagnostico guiado y conocimiento local.",
-    version="1.3.8",
+    version="1.4.0",
 )
+_telemetry = RequestTelemetry()
+_rate_limiter = SlidingWindowRateLimiter(limit=rate_limit_from_environment())
+
+def _feedback_store() -> LocalFeedbackStore:
+    return LocalFeedbackStore()
+
 
 def _create_ticket_service() -> TicketService | FirebaseDataConnectTicketService:
     backend = os.getenv("SOPORTE_TICKETS_BACKEND", "sqlite").strip().casefold()
@@ -58,6 +87,47 @@ def _create_ticket_service() -> TicketService | FirebaseDataConnectTicketService
 ticket_service = _create_ticket_service()
 
 
+@app.middleware("http")
+async def collect_request_metrics(request: Request, call_next):
+    started = time.monotonic()
+    route_limit = {
+        "/agent/ask",
+        "/agent/chat",
+        "/agent/tickets",
+        "/api/feedback",
+        "/api/telegram/webhook",
+    }
+    route_name = request.scope.get("route")
+    route = getattr(route_name, "path", "unmatched")
+    method = request.method.upper()
+    client_host = request.client.host if request.client else "unknown"
+    limited_route = request.url.path if request.url.path in route_limit else None
+    if limited_route and not _rate_limiter.allow(client_host, limited_route):
+        response = JSONResponse(
+            status_code=429,
+            content={"detail": "Se alcanzo el limite temporal de solicitudes."},
+            headers={"Retry-After": "60"},
+        )
+        _telemetry.record(
+            method,
+            limited_route,
+            response.status_code,
+            time.monotonic() - started,
+        )
+        return response
+    try:
+        response = await call_next(request)
+    except Exception:
+        route_name = request.scope.get("route")
+        route = getattr(route_name, "path", "unmatched")
+        _telemetry.record(method, route, 500, time.monotonic() - started)
+        raise
+    route_name = request.scope.get("route")
+    route = getattr(route_name, "path", "unmatched")
+    _telemetry.record(method, route, response.status_code, time.monotonic() - started)
+    return response
+
+
 @app.get("/", include_in_schema=False)
 def web_interface() -> FileResponse:
     """Sirve la interfaz gráfica del agente."""
@@ -70,6 +140,12 @@ def tickets_interface(request: Request) -> FileResponse:
     if not _is_loopback_request(request):
         raise HTTPException(status_code=403, detail="El panel solo esta disponible localmente.")
     return FileResponse(TICKETS_UI_FILE)
+
+
+@app.get("/status", include_in_schema=False)
+def status_interface() -> FileResponse:
+    """Sirve la pagina publica y minima del estado de la API."""
+    return FileResponse(STATUS_UI_FILE)
 
 
 class AgentAskRequest(BaseModel):
@@ -191,10 +267,60 @@ class TicketCreateResponse(BaseModel):
     ticket_number: str
     email_status: Literal["pending", "not_configured", "sent", "failed"]
     status: Literal["open", "resolved"]
+    email_provider: Literal["gmail", "resend", "none"] = "none"
+    email_failure_class: Literal[
+        "pending",
+        "none",
+        "not_configured",
+        "configuration",
+        "transient",
+    ] = "not_configured"
+    alert_status: Literal["pending", "not_configured", "sent", "failed", "skipped"] = "skipped"
 
 
 class TicketResolutionRequest(BaseModel):
     note: str = Field(default="", max_length=1000)
+
+
+class FeedbackRequest(BaseModel):
+    article_id: str = Field(..., min_length=3, max_length=80)
+    rating: Literal["useful", "not_useful"]
+
+    @field_validator("article_id")
+    @classmethod
+    def validate_article_id(cls, value: str) -> str:
+        article_ids = {
+            articulo["id"] for articulo in cargar_base_conocimiento()
+        }
+        if value not in article_ids:
+            raise ValueError("La guia valorada no existe en la base local.")
+        return value
+
+
+class TelegramChat(BaseModel):
+    id: int
+    type: Literal["private"]
+
+
+class TelegramMessage(BaseModel):
+    chat: TelegramChat
+    text: str | None = Field(default=None, max_length=4000)
+
+
+class TelegramUpdate(BaseModel):
+    update_id: int = Field(..., ge=0)
+    message: TelegramMessage | None = None
+
+
+class FeedbackResponse(BaseModel):
+    status: Literal["recorded"]
+
+
+class FeedbackSummaryItem(BaseModel):
+    article_id: str
+    useful: int
+    not_useful: int
+    total: int
 
 
 class DiagnosticHypothesis(BaseModel):
@@ -255,6 +381,176 @@ async def validation_error_handler(_, exc: RequestValidationError) -> JSONRespon
 def health() -> dict[str, str]:
     """Comprueba que la API puede atender solicitudes."""
     return {"status": "ok"}
+
+
+@app.get("/api/status")
+def service_status() -> dict[str, Any]:
+    """Expone estado y configuración general sin sondear ni filtrar secretos."""
+    backend = os.getenv("SOPORTE_TICKETS_BACKEND", "sqlite").strip().casefold()
+    semantic_setting = os.getenv(
+        "SOPORTE_SEMANTIC_SEARCH", "false"
+    ).strip().casefold()
+    semantic_status = (
+        "enabled"
+        if semantic_setting == "true"
+        else "disabled"
+        if semantic_setting == "false"
+        else "misconfigured"
+    )
+    gmail_sender = os.getenv("GMAIL_SENDER", "").strip()
+    gmail_recipient = os.getenv("GMAIL_TO_EMAIL", "").strip()
+    token_file = Path(
+        os.getenv("GMAIL_OAUTH_TOKEN_FILE", ".secrets/gmail-token.json")
+    )
+    if not token_file.is_absolute():
+        token_file = Path(__file__).resolve().parent.parent / token_file
+    email_configured = (
+        all(
+            os.getenv(name, "").strip()
+            for name in ("RESEND_API_KEY", "RESEND_FROM", "RESEND_TO_EMAIL")
+        )
+        or (
+            bool(gmail_sender)
+            and bool(gmail_recipient)
+            and token_file.is_file()
+        )
+    )
+    telegram_username = os.getenv("TELEGRAM_BOT_USERNAME", "").strip().lstrip("@")
+    telegram_url = (
+        f"https://t.me/{telegram_username}"
+        if re.fullmatch(r"[A-Za-z0-9_]{5,32}", telegram_username)
+        else None
+    )
+    telegram_configured = (
+        bool(
+            os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+            and os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
+        )
+        or all(
+            os.getenv(name, "").strip()
+            for name in (
+                "TELEGRAM_MTPROTO_API_ID",
+                "TELEGRAM_MTPROTO_API_HASH",
+                "TELEGRAM_MTPROTO_ALLOWED_USER_IDS",
+            )
+        )
+    )
+    overall_status = (
+        "degraded"
+        if backend not in {"sqlite", "firebase"} or semantic_status == "misconfigured"
+        else "operational"
+    )
+    return {
+        "status": overall_status,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "stale_after_seconds": 60,
+        "components": {
+            "api": "operational",
+            "ticket_store": (
+                "configured"
+                if backend in {"sqlite", "firebase"}
+                else "misconfigured"
+            ),
+            "semantic_search": semantic_status,
+            "error_monitoring": "enabled" if _sentry_enabled else "disabled",
+            "email": "configured" if email_configured else "not_configured",
+            "alerts": (
+                "configured"
+                if os.getenv("SLACK_WEBHOOK_URL", "").strip()
+                else "not_configured"
+            ),
+            "telegram": "configured" if telegram_configured else "not_configured",
+        },
+        "telegram_url": telegram_url,
+    }
+
+
+@app.get("/api/metrics")
+def service_metrics(request: Request) -> dict[str, Any]:
+    """Devuelve métricas agregadas solo a clientes locales."""
+    if not _is_loopback_request(request):
+        raise HTTPException(
+            status_code=403,
+            detail="Las metricas operativas solo estan disponibles localmente.",
+        )
+    return _telemetry.snapshot()
+
+
+@app.post("/api/telegram/webhook")
+def telegram_webhook(
+    update: TelegramUpdate,
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+) -> dict[str, str]:
+    """Procesa /start o una consulta puntual; no persiste chat ni identidad."""
+    webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    if not webhook_secret or not bot_token:
+        raise HTTPException(
+            status_code=503,
+            detail="El canal de Telegram no esta configurado.",
+        )
+    if not x_telegram_bot_api_secret_token or not hmac.compare_digest(
+        webhook_secret,
+        x_telegram_bot_api_secret_token,
+    ):
+        raise HTTPException(status_code=403, detail="Webhook no autorizado.")
+    if _telegram_updates.contains(update.update_id):
+        return {"status": "duplicate"}
+    if update.message is None:
+        _telegram_updates.add(update.update_id)
+        return {"status": "ignored"}
+    message = update.message
+    text = message.text or ""
+    response_text = command_response(
+        text,
+        responder=agent.responder,
+    )
+    try:
+        telegram_reply(
+            update.update_id,
+            message.chat.id,
+            response_text,
+            bot_token,
+        )
+    except TelegramDeliveryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    _telegram_updates.add(update.update_id)
+    return {"status": "processed"}
+
+
+@app.post("/api/feedback", response_model=FeedbackResponse)
+def record_feedback(
+    req: FeedbackRequest,
+    request: Request,
+) -> FeedbackResponse:
+    """Guarda una valoracion local sin asociarla a la conversacion o usuario."""
+    if not _is_loopback_request(request):
+        raise HTTPException(
+            status_code=403,
+            detail="El feedback solo esta disponible localmente.",
+        )
+    try:
+        _feedback_store().record(req.article_id, req.rating)
+    except FeedbackStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return FeedbackResponse(status="recorded")
+
+
+@app.get("/api/feedback/summary", response_model=list[FeedbackSummaryItem])
+def feedback_summary(request: Request) -> list[FeedbackSummaryItem]:
+    """Devuelve conteos locales por guia, sin eventos individuales."""
+    if not _is_loopback_request(request):
+        raise HTTPException(
+            status_code=403,
+            detail="El resumen de feedback solo esta disponible localmente.",
+        )
+    try:
+        return [
+            FeedbackSummaryItem(**item)
+            for item in _feedback_store().summary()
+        ]
+    except FeedbackStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/agent/ask", response_model=AgentAskResponse)
@@ -469,6 +765,9 @@ def create_support_ticket(req: TicketCreateRequest, request: Request) -> TicketC
         ticket_number=ticket["incident_id"],
         email_status=ticket["ticket_email_status"],
         status=ticket["status"],
+        email_provider=ticket.get("email_provider", "none"),
+        email_failure_class=ticket.get("email_failure_class", "not_configured"),
+        alert_status=ticket.get("alert_status", "skipped"),
     )
 
 

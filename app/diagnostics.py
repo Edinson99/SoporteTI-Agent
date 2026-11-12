@@ -144,16 +144,28 @@ def crear_diagnostico(
         for resultado in resultados[:3]:
             articulo = resultado["articulo"]
             categoria = _CATEGORIAS.get(articulo["id"], "general")
-            confianza = min(0.9, 0.45 + 0.12 * (resultado["puntuacion"] - 1))
+            similitud = resultado.get("similitud_semantica")
+            confianza = (
+                round(min(0.9, max(0.45, similitud)), 2)
+                if not resultado["palabras_coincidentes"] and similitud is not None
+                else min(0.9, 0.45 + 0.12 * (resultado["puntuacion"] - 1))
+            )
+            fundamentos = []
+            if resultado["palabras_coincidentes"]:
+                fundamentos.append(
+                    "Coincidencia de palabras clave: "
+                    + ", ".join(resultado["palabras_coincidentes"])
+                )
+            if similitud is not None:
+                fundamentos.append(f"Similitud semantica local: {similitud:.2f}")
+            fundamento = "; ".join(fundamentos)
             hipotesis.append(
                 {
                     "cause": _HIPOTESIS[categoria],
                     "confidence": round(confianza, 2),
                     "sources": [articulo["id"]],
                     "rationale": (
-                        "Coincidencia de palabras clave: "
-                        + ", ".join(resultado["palabras_coincidentes"])
-                        + ". Es una pista, no una causa confirmada."
+                        fundamento + ". Es una pista, no una causa confirmada."
                     ),
                     "tests": [
                         "Confirma si el problema se reproduce y desde cuando ocurre.",
@@ -186,6 +198,11 @@ def crear_diagnostico(
         for resultado in resultados[:3]
         for palabra in resultado["palabras_coincidentes"]
     ]
+    evidencia.extend(
+        f"Similitud semantica local: {resultado['similitud_semantica']:.2f}"
+        for resultado in resultados[:3]
+        if "similitud_semantica" in resultado
+    )
     evidencia.extend(evidencia_red)
     return {
         "category": categoria,

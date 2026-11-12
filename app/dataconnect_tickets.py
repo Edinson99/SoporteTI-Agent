@@ -7,16 +7,18 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid5
 
 from app.tickets import TicketService
+from app.notifications import send_resend_fallback, send_slack_priority_alert
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _BRIDGE = _PROJECT_ROOT / "app" / "dataconnect_bridge.mjs"
+_ATTACHMENT_RETENTION_DAYS = 180
 
 
 class DataConnectError(RuntimeError):
@@ -63,6 +65,9 @@ class FirebaseDataConnectTicketService:
             "context": context or {},
             "diagnosis": diagnosis,
             "email_status": "pending",
+            "email_provider": "none",
+            "email_failure_class": "pending",
+            "alert_status": "pending" if priority.casefold() in {"high", "critical"} else "skipped",
             "ticket_number": ticket_number,
             "user_id": user_id,
             "attachments": [
@@ -133,6 +138,7 @@ class FirebaseDataConnectTicketService:
                 raise
             return self._create_response(existing)
 
+        gmail_failure: list[str] = []
         email_status = TicketService._send_email(
             ticket_number=ticket_number,
             created_at=created_at,
@@ -146,8 +152,47 @@ class FirebaseDataConnectTicketService:
             contact_name=contact_name,
             contact_email=contact_email,
             contact_phone=contact_phone,
+            failure_class=gmail_failure,
+        )
+        email_provider = "gmail" if email_status == "sent" else "none"
+        email_failure_class = "none" if email_status == "sent" else "not_configured"
+        if email_status != "sent":
+            resend_failure: list[str] = []
+            resend_status = send_resend_fallback(
+                ticket_number=ticket_number,
+                category=category,
+                priority=priority,
+                question=question,
+                diagnosis=diagnosis,
+                contact_name=contact_name,
+                contact_email=contact_email,
+                contact_phone=contact_phone,
+                failure_class=resend_failure,
+            )
+            if resend_status == "sent":
+                email_status = "sent"
+                email_provider = "resend"
+                email_failure_class = "none"
+            elif email_status == "not_configured" and resend_status == "not_configured":
+                email_status = "not_configured"
+                email_failure_class = "not_configured"
+            else:
+                email_status = "failed"
+                failure_classes = [*gmail_failure, *resend_failure]
+                email_failure_class = (
+                    "configuration"
+                    if "configuration" in failure_classes
+                    else "transient"
+                )
+        alert_status = send_slack_priority_alert(
+            ticket_number=ticket_number,
+            category=category,
+            priority=priority,
         )
         metadata["email_status"] = email_status
+        metadata["email_provider"] = email_provider
+        metadata["email_failure_class"] = email_failure_class
+        metadata["alert_status"] = alert_status
         self._execute(
             "update_email_status",
             {
@@ -162,12 +207,23 @@ class FirebaseDataConnectTicketService:
                     email_status,
                     event_key=f"email:{email_status}",
                 ),
+                "alertEvent": self._audit_event(
+                    request_uuid,
+                    ticket_id,
+                    "slack_alert_status",
+                    "pending" if priority.casefold() in {"high", "critical"} else "skipped",
+                    alert_status,
+                    event_key=f"slack:{alert_status}",
+                ),
             },
         )
         return {
             "incident_id": ticket_number,
             "ticket_email_status": email_status,
             "status": "open",
+            "email_provider": email_provider,
+            "email_failure_class": email_failure_class,
+            "alert_status": alert_status,
         }
 
     def list_tickets(self) -> list[dict[str, Any]]:
@@ -175,6 +231,8 @@ class FirebaseDataConnectTicketService:
         tickets = result.get("tickets")
         if not isinstance(tickets, list):
             raise DataConnectError("Data Connect devolvió una lista de tickets inválida.")
+        for ticket in tickets:
+            self._expire_ticket_attachments(ticket)
         return sorted(
             (self._to_ticket(ticket) for ticket in tickets),
             key=lambda ticket: ticket["created_at"],
@@ -192,13 +250,17 @@ class FirebaseDataConnectTicketService:
         ticket = self._get_ticket(ticket_id)
         if ticket is None:
             return None
+        self._expire_ticket_attachments(ticket)
         if ticket["status"] != "resolved":
             request_uuid = UUID(ticket_id)
+            metadata = json.loads(ticket.get("contextJson") or "{}")
+            metadata["attachments"] = []
             self._execute(
                 "resolve_ticket",
                 {
                     "id": ticket_id,
                     "resolutionNote": resolution_note,
+                    "contextJson": json.dumps(metadata, ensure_ascii=False),
                     "event": self._audit_event(
                         request_uuid,
                         ticket_id,
@@ -225,6 +287,29 @@ class FirebaseDataConnectTicketService:
         ticket = result.get("ticket")
         return ticket if isinstance(ticket, dict) else None
 
+    def _expire_ticket_attachments(self, row: dict[str, Any]) -> None:
+        metadata = json.loads(row.get("contextJson") or "{}")
+        attachments = metadata.get("attachments")
+        if not isinstance(attachments, list) or not attachments:
+            return
+        created_at = datetime.fromisoformat(
+            row["createdAt"].replace("Z", "+00:00")
+        )
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        expired = created_at <= datetime.now(timezone.utc) - timedelta(
+            days=_ATTACHMENT_RETENTION_DAYS
+        )
+        if row.get("status") != "resolved" and not expired:
+            return
+        metadata["attachments"] = []
+        encoded_metadata = json.dumps(metadata, ensure_ascii=False)
+        self._execute(
+            "update_ticket_metadata",
+            {"id": row["id"], "contextJson": encoded_metadata},
+        )
+        row["contextJson"] = encoded_metadata
+
     def get_attachment(
         self,
         ticket_number: str,
@@ -237,6 +322,7 @@ class FirebaseDataConnectTicketService:
         row = self._get_ticket(ticket_id)
         if row is None:
             return None
+        self._expire_ticket_attachments(row)
         ticket = self._to_ticket(row)
         if ticket["ticket_number"] != ticket_number:
             return None
@@ -375,6 +461,12 @@ class FirebaseDataConnectTicketService:
                 "email_status",
                 "sent" if row.get("emailSentStatus") else "pending",
             ),
+            "email_provider": metadata.get("email_provider", "none"),
+            "email_failure_class": metadata.get(
+                "email_failure_class",
+                "not_configured",
+            ),
+            "alert_status": metadata.get("alert_status", "not_configured"),
             "contact_name": row["contactName"],
             "contact_email": row["contactEmail"],
             "contact_phone": row["contactPhone"],
@@ -391,6 +483,9 @@ class FirebaseDataConnectTicketService:
             "incident_id": ticket["ticket_number"],
             "ticket_email_status": ticket["email_status"],
             "status": ticket["status"],
+            "email_provider": ticket["email_provider"],
+            "email_failure_class": ticket["email_failure_class"],
+            "alert_status": ticket["alert_status"],
         }
 
     @staticmethod

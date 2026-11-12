@@ -69,7 +69,10 @@
         <h1>Seguimiento de tickets</h1>
         <p>Panel local del técnico · la información de contacto es privada.</p>
       </div>
-      <a href="/">Volver al chat</a>
+      <nav aria-label="Enlaces de servicio">
+        <a href="/status">Estado del servicio</a>
+        <a href="/">Volver al chat</a>
+      </nav>
     </header>
     <section class="stats" aria-label="Resumen de tickets">
       <article class="stat"><strong id="total-count">0</strong><span>Tickets registrados</span></article>
@@ -141,7 +144,13 @@
         head.append(heading, badge);
         card.append(head);
         addText(card, "p", `Creado: ${new Date(ticket.created_at).toLocaleString()} · Usuario indicado: ${ticket.user_id} · Prioridad: ${ticket.priority}`, "meta");
-        addText(card, "p", `Estado del correo: ${ticket.email_status}`, `meta email-status ${ticket.email_status}`);
+        const provider = ticket.email_provider && ticket.email_provider !== "none"
+          ? ` (${ticket.email_provider})` : "";
+        addText(card, "p", `Estado del correo: ${ticket.email_status}${provider}`, `meta email-status ${ticket.email_status}`);
+        if (ticket.email_status === "failed") {
+          addText(card, "p", `Clasificación del fallo: ${ticket.email_failure_class || "no disponible"}`, "meta");
+        }
+        addText(card, "p", `Alerta Slack: ${ticket.alert_status || "not_configured"}`, "meta");
         addText(card, "p", ticket.description, "description");
 
         const contact = document.createElement("div");

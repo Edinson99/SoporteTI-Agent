@@ -9,7 +9,7 @@ import logging
 import os
 import sqlite3
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email import policy
 from email.message import EmailMessage
 from html.parser import HTMLParser
@@ -23,10 +23,13 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+from app.notifications import send_resend_fallback, send_slack_priority_alert
+
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(_PROJECT_ROOT / ".env")
 _LOGGER = logging.getLogger(__name__)
+_ATTACHMENT_RETENTION_DAYS = 180
 
 
 def _remove_diacritics(value: str) -> str:
@@ -206,8 +209,13 @@ class TicketService:
         with sqlite3.connect(self.database_path, timeout=10) as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._ensure_schema(connection)
+            self._purge_expired_attachments(connection)
             existing = connection.execute(
-                "SELECT ticket_number, email_status, status FROM tickets WHERE request_id = ?",
+                """
+                SELECT ticket_number, email_status, status, email_provider,
+                       email_failure_class, alert_status
+                FROM tickets WHERE request_id = ?
+                """,
                 (request_id,),
             ).fetchone()
             if existing:
@@ -215,6 +223,9 @@ class TicketService:
                     "incident_id": existing[0],
                     "ticket_email_status": existing[1],
                     "status": existing[2],
+                    "email_provider": existing[3],
+                    "email_failure_class": existing[4],
+                    "alert_status": existing[5],
                 }
             cursor = connection.execute(
                 """
@@ -222,8 +233,8 @@ class TicketService:
                     request_id, created_at, user_id, category, priority,
                     description, diagnosis, context_json, conversation_json,
                     email_status, contact_name, contact_email, contact_phone,
-                    status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    status, email_provider, email_failure_class, alert_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     request_id,
@@ -240,6 +251,9 @@ class TicketService:
                     contact_email,
                     contact_phone,
                     "open",
+                    "none",
+                    "pending",
+                    "pending" if priority.casefold() in {"high", "critical"} else "skipped",
                 ),
             )
             ticket_number = f"STI-{created_at:%Y%m%d}-{cursor.lastrowid:06d}"
@@ -265,6 +279,7 @@ class TicketService:
                 ],
             )
 
+        gmail_failure: list[str] = []
         email_status = self._send_email(
             ticket_number=ticket_number,
             created_at=created_at,
@@ -278,17 +293,91 @@ class TicketService:
             contact_name=contact_name,
             contact_email=contact_email,
             contact_phone=contact_phone,
+            failure_class=gmail_failure,
+        )
+        email_provider = "gmail" if email_status == "sent" else "none"
+        email_failure_class = "none" if email_status == "sent" else "not_configured"
+        if email_status != "sent":
+            resend_failure: list[str] = []
+            resend_status = send_resend_fallback(
+                ticket_number=ticket_number,
+                category=category,
+                priority=priority,
+                question=question,
+                diagnosis=diagnosis,
+                contact_name=contact_name,
+                contact_email=contact_email,
+                contact_phone=contact_phone,
+                failure_class=resend_failure,
+            )
+            if resend_status == "sent":
+                email_status = "sent"
+                email_provider = "resend"
+                email_failure_class = "none"
+            elif email_status == "not_configured" and resend_status == "not_configured":
+                email_status = "not_configured"
+                email_failure_class = "not_configured"
+            else:
+                email_status = "failed"
+                failure_classes = [*gmail_failure, *resend_failure]
+                email_failure_class = (
+                    "configuration"
+                    if "configuration" in failure_classes
+                    else "transient"
+                )
+        alert_status = send_slack_priority_alert(
+            ticket_number=ticket_number,
+            category=category,
+            priority=priority,
         )
         with sqlite3.connect(self.database_path, timeout=10) as connection:
             connection.execute(
-                "UPDATE tickets SET email_status = ? WHERE ticket_number = ?",
-                (email_status, ticket_number),
+                """
+                UPDATE tickets
+                SET email_status = ?, email_provider = ?,
+                    email_failure_class = ?, alert_status = ?
+                WHERE ticket_number = ?
+                """,
+                (
+                    email_status,
+                    email_provider,
+                    email_failure_class,
+                    alert_status,
+                    ticket_number,
+                ),
+            )
+            notification_time = datetime.now(timezone.utc).isoformat()
+            connection.executemany(
+                """
+                INSERT INTO ticket_notification_events (
+                    ticket_number, channel, provider, status, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        ticket_number,
+                        "email",
+                        email_provider,
+                        email_status,
+                        notification_time,
+                    ),
+                    (
+                        ticket_number,
+                        "slack",
+                        "slack" if alert_status in {"sent", "failed"} else "none",
+                        alert_status,
+                        notification_time,
+                    ),
+                ],
             )
 
         return {
             "incident_id": ticket_number,
             "ticket_email_status": email_status,
             "status": "open",
+            "email_provider": email_provider,
+            "email_failure_class": email_failure_class,
+            "alert_status": alert_status,
         }
 
     def list_tickets(self) -> list[dict[str, Any]]:
@@ -297,12 +386,14 @@ class TicketService:
         with sqlite3.connect(self.database_path, timeout=10) as connection:
             connection.row_factory = sqlite3.Row
             self._ensure_schema(connection)
+            self._purge_expired_attachments(connection)
             rows = connection.execute(
                 """
                 SELECT ticket_number, created_at, user_id, category, priority,
                        description, diagnosis, context_json, conversation_json,
                        email_status, contact_name, contact_email, contact_phone,
-                       status, resolved_at, resolution_note
+                       status, resolved_at, resolution_note, email_provider,
+                       email_failure_class, alert_status
                 FROM tickets ORDER BY id DESC
                 """
             ).fetchall()
@@ -341,6 +432,7 @@ class TicketService:
         """Lee una imagen asociada al ticket solicitado."""
         with sqlite3.connect(self.database_path, timeout=10) as connection:
             self._ensure_schema(connection)
+            self._purge_expired_attachments(connection)
             row = connection.execute(
                 """
                 SELECT file_name, content_type, image_data
@@ -365,6 +457,7 @@ class TicketService:
         """Marca un ticket abierto como resuelto sin sobrescribir el cierre inicial."""
         with sqlite3.connect(self.database_path, timeout=10) as connection:
             self._ensure_schema(connection)
+            self._purge_expired_attachments(connection)
             connection.execute(
                 """
                 UPDATE tickets
@@ -384,6 +477,11 @@ class TicketService:
                 """,
                 (ticket_number,),
             ).fetchone()
+            if row is not None and row[1] == "resolved":
+                connection.execute(
+                    "DELETE FROM ticket_attachments WHERE ticket_number = ?",
+                    (ticket_number,),
+                )
         if row is None:
             return None
         return {
@@ -415,7 +513,10 @@ class TicketService:
                 contact_phone TEXT,
                 status TEXT NOT NULL DEFAULT 'open',
                 resolved_at TEXT,
-                resolution_note TEXT
+                resolution_note TEXT,
+                email_provider TEXT NOT NULL DEFAULT 'none',
+                email_failure_class TEXT NOT NULL DEFAULT 'not_configured',
+                alert_status TEXT NOT NULL DEFAULT 'skipped'
             )
             """
         )
@@ -431,6 +532,18 @@ class TicketService:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ticket_notification_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_number TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
         columns = {
             row[1] for row in connection.execute("PRAGMA table_info(tickets)")
         }
@@ -442,6 +555,9 @@ class TicketService:
             "status": "TEXT NOT NULL DEFAULT 'open'",
             "resolved_at": "TEXT",
             "resolution_note": "TEXT",
+            "email_provider": "TEXT NOT NULL DEFAULT 'none'",
+            "email_failure_class": "TEXT NOT NULL DEFAULT 'not_configured'",
+            "alert_status": "TEXT NOT NULL DEFAULT 'skipped'",
         }
         for column, definition in migrations.items():
             if column not in columns:
@@ -451,6 +567,22 @@ class TicketService:
         connection.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_request_id "
             "ON tickets(request_id)"
+        )
+
+    @staticmethod
+    def _purge_expired_attachments(connection: sqlite3.Connection) -> None:
+        cutoff = (
+            datetime.now(timezone.utc)
+            - timedelta(days=_ATTACHMENT_RETENTION_DAYS)
+        ).isoformat()
+        connection.execute(
+            """
+            DELETE FROM ticket_attachments
+            WHERE ticket_number IN (
+                SELECT ticket_number FROM tickets WHERE created_at <= ?
+            )
+            """,
+            (cutoff,),
         )
 
     @staticmethod
@@ -468,6 +600,7 @@ class TicketService:
         contact_name: str,
         contact_email: str,
         contact_phone: str,
+        failure_class: list[str] | None = None,
     ) -> str:
         load_dotenv(_PROJECT_ROOT / ".env")
         sender = os.getenv("GMAIL_SENDER", "").strip()
@@ -478,6 +611,8 @@ class TicketService:
         if not token_path.is_absolute():
             token_path = _PROJECT_ROOT / token_path
         if not all((sender, recipient)) or not token_path.is_file():
+            if failure_class is not None:
+                failure_class[:] = ["not_configured"]
             return "not_configured"
 
         conversation_text = "\n\n".join(
@@ -584,10 +719,21 @@ Conversacion disponible:
                 userId="me", body={"raw": raw_message}
             ).execute()
         except (OSError, ValueError, GoogleAuthError, HttpError) as exc:
+            if failure_class is not None:
+                if isinstance(exc, (ValueError, GoogleAuthError)):
+                    failure_class[:] = ["configuration"]
+                elif isinstance(exc, HttpError):
+                    status_code = getattr(exc.resp, "status", 0)
+                    failure_class[:] = [
+                        "transient" if status_code == 429 or status_code >= 500
+                        else "configuration"
+                    ]
+                else:
+                    failure_class[:] = ["transient"]
             _LOGGER.warning(
-                "No se pudo enviar el correo Gmail del ticket %s: %s",
+                "No se pudo enviar el correo Gmail del ticket %s; error_type=%s",
                 ticket_number,
-                exc,
+                type(exc).__name__,
             )
             return "failed"
         return "sent"

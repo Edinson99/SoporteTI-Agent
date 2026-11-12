@@ -106,6 +106,12 @@
     .steps { margin: 9px 0 0; padding-left: 21px; }
     .steps li { padding: 3px 0 3px 3px; }
     .meta { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(130, 150, 180, .18); color: var(--muted); font-size: 11px; }
+    .feedback { display: grid; gap: 7px; margin-top: 12px; color: var(--muted); font-size: 11px; }
+    .feedback-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+    .feedback-actions button { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: white; color: #42536b; font-size: 11px; }
+    .feedback-actions button:hover:not(:disabled) { border-color: #a9c4fa; background: #f4f8ff; }
+    .feedback-actions button:disabled { cursor: default; opacity: .7; }
+    .feedback-status { min-height: 1em; margin: 0; }
     .quick-start { padding: 0 6% 21px; }
     .quick-label { margin: 0 0 10px; color: var(--muted); font-size: 11px; font-weight: 700; }
     .suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -194,7 +200,10 @@
         </div>
         <div><div class="brand-name">Soporte TI</div><div class="brand-caption">Asistencia inteligente para tu equipo</div></div>
       </div>
-      <a class="ticket-link" href="/tickets">Seguimiento de tickets</a>
+      <nav aria-label="Enlaces de servicio">
+        <a class="ticket-link" href="/status">Estado del servicio</a>
+        <a class="ticket-link" href="/tickets">Seguimiento de tickets</a>
+      </nav>
     </header>
 
     <main>
@@ -622,13 +631,63 @@
       meta.className = "meta";
       meta.textContent = `${data.needs_approval ? "Requiere revisión humana" : "Guía: " + (data.sources.join(", ") || "soporte TI")} · Prioridad ${data.priority} · ${data.next_action.replaceAll("_", " ")}`;
       content.append(meta);
+      const feedbackArticle = data.sources.find((source) => /^kb_[a-z0-9_]+$/.test(source));
+      if (feedbackArticle && !data.needs_approval) {
+        const feedback = document.createElement("section");
+        feedback.className = "feedback";
+        const prompt = document.createElement("span");
+        prompt.textContent = "¿Te fue útil esta guía? Guardamos solo la guía, tu valoración y la fecha por 180 días; no la pregunta ni tus datos.";
+        const actions = document.createElement("div");
+        actions.className = "feedback-actions";
+        const status = document.createElement("p");
+        status.className = "feedback-status";
+        status.setAttribute("role", "status");
+        [
+          ["useful", "Sí, fue útil"],
+          ["not_useful", "No fue útil"]
+        ].forEach(([rating, label]) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = label;
+          button.addEventListener("click", async () => {
+            actions.querySelectorAll("button").forEach((item) => { item.disabled = true; });
+            status.textContent = "Guardando valoración...";
+            try {
+              const response = await fetch("/api/feedback", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  article_id: feedbackArticle,
+                  rating
+                })
+              });
+              const result = await response.json();
+              if (!response.ok) {
+                const details = result.errors?.map((item) => item.msg).join(" ")
+                  || result.detail
+                  || "No se pudo guardar la valoración.";
+                throw new Error(details);
+              }
+              status.textContent = "Gracias; tu valoración quedó registrada.";
+            } catch (error) {
+              status.textContent = error instanceof TypeError
+                ? "No se pudo conectar con el servicio. Inténtalo nuevamente."
+                : error.message;
+              actions.querySelectorAll("button").forEach((item) => { item.disabled = false; });
+            }
+          });
+          actions.append(button);
+        });
+        feedback.append(prompt, actions, status);
+        content.append(feedback);
+      }
       if (data.contact_required && data.ticket_request_id) {
         const contactForm = document.createElement("form");
         contactForm.className = "contact-form";
         const title = document.createElement("h3");
         title.textContent = "Antes de enviar el caso al técnico";
         const privacy = document.createElement("p");
-        privacy.textContent = "No logramos resolver la incidencia con la información y los pasos revisados. ¿Quieres contactar al técnico para continuar? Recibirá la descripción, la conversación y tus datos de contacto. Las capturas adjuntas se guardarán en el ticket y estarán disponibles en el panel; no se adjuntan al correo. No se enviará nada hasta que confirmes abajo.";
+        privacy.textContent = "No logramos resolver la incidencia con la información y los pasos revisados. ¿Quieres contactar al técnico para continuar? Recibirá la descripción, la conversación y tus datos de contacto. El correo usa Gmail o Resend según la configuración. Para prioridades altas, Slack recibe solo el número, la categoría y la prioridad del ticket. Las capturas se guardan en el sistema de tickets, no se adjuntan al correo y se eliminan al resolver el caso o a los 180 días. No se enviará nada hasta que confirmes abajo.";
         contactForm.append(title, privacy);
 
         const fieldGrid = document.createElement("div");
@@ -662,7 +721,7 @@
         consent.type = "checkbox";
         consent.required = true;
         const consentText = document.createElement("span");
-        consentText.textContent = "Sí, autorizo crear el ticket y compartir con el técnico mi descripción, conversación, datos de contacto y capturas adjuntas. Recibiré una copia del correo; las imágenes no se adjuntan al correo.";
+        consentText.textContent = "Sí, autorizo crear el ticket y compartir con el equipo técnico mi descripción, conversación, datos de contacto y capturas adjuntas. El correo puede procesarse por Gmail o Resend; para prioridades altas, Slack recibe solo el número, la categoría y la prioridad. Recibiré copia del correo; las imágenes no se adjuntan.";
         consentLabel.append(consent, consentText);
         const status = document.createElement("p");
         status.className = "ticket-submit-status";
@@ -698,10 +757,19 @@
             const emailStatus = {
               pending: "ticket guardado; el aviso está en proceso",
               sent: "correo enviado al técnico",
-              failed: "ticket guardado; falló el envío del correo",
+              failed: ticket.email_failure_class === "configuration"
+                ? "ticket guardado; revisa la configuración del correo"
+                : "ticket guardado; falló el envío del correo",
               not_configured: "ticket guardado; falta configurar el correo",
             }[ticket.email_status];
-            status.textContent = `Ticket ${ticket.ticket_number} · ${emailStatus}. Puedes seguirlo en el panel local.`;
+            const provider = ticket.email_provider === "resend" ? " (Resend de respaldo)"
+              : ticket.email_provider === "gmail" ? " (Gmail)" : "";
+            const alertStatus = ticket.alert_status === "sent"
+              ? " · alerta de prioridad enviada"
+              : ticket.alert_status === "failed"
+                ? " · falló la alerta al equipo"
+                : "";
+            status.textContent = `Ticket ${ticket.ticket_number} · ${emailStatus}${provider}${alertStatus}. Puedes seguirlo en el panel local.`;
             contactForm.querySelectorAll("input, button").forEach((input) => { input.disabled = true; });
           } catch (error) {
             status.textContent = error instanceof TypeError

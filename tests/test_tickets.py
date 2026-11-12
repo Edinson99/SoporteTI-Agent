@@ -5,7 +5,20 @@ import sqlite3
 from email import policy
 from email.parser import BytesParser
 
+import pytest
+
 from app.tickets import TicketService, _PROJECT_ROOT
+
+
+@pytest.fixture(autouse=True)
+def disable_external_notification_providers(monkeypatch):
+    for name in (
+        "RESEND_API_KEY",
+        "RESEND_FROM",
+        "RESEND_TO_EMAIL",
+        "SLACK_WEBHOOK_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
 
 
 def _create_ticket(service, **overrides):
@@ -222,6 +235,39 @@ def test_fallo_gmail_api_no_pierde_ticket_y_queda_reportado(tmp_path, monkeypatc
     assert status == "failed"
 
 
+def test_fallo_gmail_usa_resend_y_persiste_proveedor_de_respaldo(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        TicketService,
+        "_send_email",
+        staticmethod(lambda **_kwargs: "failed"),
+    )
+    monkeypatch.setattr(
+        "app.tickets.send_resend_fallback",
+        lambda **_kwargs: "sent",
+    )
+    result = _create_ticket(TicketService(tmp_path / "tickets.sqlite3"))
+
+    assert result["ticket_email_status"] == "sent"
+    assert result["email_provider"] == "resend"
+    ticket = TicketService(tmp_path / "tickets.sqlite3").list_tickets()[0]
+    assert ticket["email_provider"] == "resend"
+    with sqlite3.connect(TicketService(tmp_path / "tickets.sqlite3").database_path) as connection:
+        audit = connection.execute(
+            """
+            SELECT channel, provider, status
+            FROM ticket_notification_events
+            ORDER BY channel
+            """
+        ).fetchall()
+    assert audit == [
+        ("email", "resend", "sent"),
+        ("slack", "none", "skipped"),
+    ]
+
+
 def test_repetir_solicitud_idempotente_no_duplica_ticket(tmp_path, monkeypatch):
     monkeypatch.setenv("GMAIL_OAUTH_TOKEN_FILE", "")
     service = TicketService(tmp_path / "tickets.sqlite3")
@@ -245,6 +291,35 @@ def test_resuelve_ticket_con_fecha_y_nota(tmp_path, monkeypatch):
     assert result["resolved_at"]
     assert result["resolution_note"] == "Aplicacion reinstalada."
     assert service.resolve_ticket("STI-no-existe", "") is None
+
+
+def test_adjuntos_se_eliminan_al_resolver_o_cumplir_180_dias(tmp_path):
+    service = TicketService(tmp_path / "tickets.sqlite3")
+    image = {
+        "id": "test-attachment",
+        "file_name": "evidencia.png",
+        "content_type": "image/png",
+        "data": b"\x89PNG\r\n\x1a\nexample",
+    }
+    created = _create_ticket(service, attachments=[image])
+    assert service.get_attachment(created["incident_id"], "test-attachment")
+
+    service.resolve_ticket(created["incident_id"], "Resuelto.")
+
+    assert service.get_attachment(created["incident_id"], "test-attachment") is None
+
+    aged = _create_ticket(
+        service,
+        request_id="45038ee8-92a5-4db4-b4b2-965983e367df",
+        attachments=[{**image, "id": "aged-attachment"}],
+    )
+    with sqlite3.connect(service.database_path) as connection:
+        connection.execute(
+            "UPDATE tickets SET created_at = ? WHERE ticket_number = ?",
+            ("2026-01-01T00:00:00+00:00", aged["incident_id"]),
+        )
+
+    assert service.get_attachment(aged["incident_id"], "aged-attachment") is None
 
 
 def test_migra_base_previa_de_tickets(tmp_path):

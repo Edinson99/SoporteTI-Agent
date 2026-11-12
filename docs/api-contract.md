@@ -1,12 +1,33 @@
 # API Contract
 
-Contrato de API de SoporteTI-Agent v1.3.8.
+Contrato de API de SoporteTI-Agent v1.4.0.
 
 ## `GET /health`
 
 - Entrada: ninguna.
 - Salida: `{"status":"ok"}`.
 - Estado exitoso: `200`.
+- Es un health check de vida de la API; no comprueba disponibilidad de
+  Firebase, Hermes, Gmail ni otros proveedores.
+
+## Estado y métricas
+
+- `GET /status`: página de estado accesible sin credenciales.
+- `GET /api/status`: estado general de la API, timestamp y configuración
+  resumida de dependencias. Los proveedores externos se muestran como
+  configurados/no configurados; no se consulta su disponibilidad ni se exponen
+  nombres de host, DSN, tokens o direcciones de correo.
+- `GET /api/metrics`: contadores por método, ruta parametrizada y código HTTP,
+  latencia media/máxima y errores 5xx. Requiere loopback (`403` en remoto).
+  Solo vive en memoria y no guarda IP, cuerpo, pregunta, identidad, imágenes o
+  datos de contacto.
+- Las rutas de diagnóstico, chat, confirmación de tickets, feedback y webhook
+  tienen un límite por proceso de 60 solicitudes/minuto y origen de conexión,
+  configurable con `SOPORTE_RATE_LIMIT_PER_MINUTE`. Al excederlo devuelven
+  `429` y `Retry-After: 60`. No es un coordinador de límites distribuido.
+- Sentry es opcional: configura `SENTRY_DSN` e instala
+  `requirements-observability.txt`. Los eventos eliminan solicitud, identidad,
+  mensajes, variables locales y breadcrumbs antes de salir del proceso.
 
 ## `POST /agent/ask`
 
@@ -163,6 +184,32 @@ con guía, el modelo redacta la respuesta; los errores de Hermes se devuelven
 explícitamente. El historial y las capturas permanecen solo en la memoria de
 la página mientras dura la sesión y se pierden al recargar.
 
+### Valoraciones de guias
+
+Las respuestas que usan una guia local muestran botones opcionales de utilidad.
+El voto se asocia solo con la guia principal de la respuesta. El endpoint de
+loopback `POST /api/feedback` acepta:
+
+```json
+{
+  "article_id": "kb_internet_001",
+  "rating": "useful"
+}
+```
+
+`rating` acepta `useful` o `not_useful`; la guia debe existir en la base local.
+Una respuesta correcta es `200 {"status":"recorded"}`. La ruta rechaza
+solicitudes remotas con `403`, datos invalidos con `400` y fallos de
+persistencia con `503`.
+
+Por defecto, SQLite usa `data/feedback.sqlite3`, configurable con
+`SOPORTE_FEEDBACK_DB`. Solo se persisten `article_id`, `rating` y `created_at`
+en UTC; no se guarda pregunta, conversacion, usuario, contacto ni texto libre.
+Los votos se eliminan al guardar un voto o consultar el resumen cuando superan
+180 dias. `GET /api/feedback/summary` devuelve conteos agregados por guia y
+tambien requiere loopback. Las valoraciones sirven para priorizar revision
+humana; no actualizan articulos automaticamente.
+
 ### Tickets y notificaciones locales
 
 El chat muestra campos obligatorios de nombre, correo, teléfono y autorización
@@ -266,16 +313,25 @@ Respuesta
 ```
 
 Los posibles valores de `email_status` son `pending`, `sent`, `failed` y
-`not_configured`. `409` indica que existe una guía y no se creó el ticket;
+`not_configured`. La respuesta también incluye `email_provider` (`gmail`,
+`resend` o `none`), `email_failure_class` (`none`, `not_configured`,
+`configuration`, `transient` o `pending`) y `alert_status` (`sent`, `failed`,
+`not_configured`, `skipped` o `pending`). `409` indica que existe una guía y no se creó el ticket;
 `403` indica que la solicitud no procede de loopback o no incluye consentimiento; los errores de
 validación usan `422`.
 
-El correo se envía por Gmail API OAuth. Cuando la cuenta remitente tiene una
-firma configurada en Gmail, se consulta y añade al mensaje al enviarlo. La
-firma y el contenido del correo se normalizan para quitar tildes y convertir
-`ñ`/`Ñ` en `n`/`N`. La configuración y el flujo de autorización están en las
-[notas de la versión 1.3.5](version-1.3.5.md). El ticket se guarda antes de
-intentar enviar el correo; un error de Gmail no elimina el ticket.
+Gmail API OAuth es el proveedor primario. Si falta su configuración o falla el
+envío, Resend se usa como respaldo solo si están configurados
+`RESEND_API_KEY`, `RESEND_FROM` y `RESEND_TO_EMAIL`; el fallo queda clasificado
+como configuración o transitorio y el estado/proveedor se guarda con el ticket.
+La firma de Gmail se conserva en el proveedor primario. Los correos de respaldo
+se envían al técnico con copia al contacto. Un fallo de ambos proveedores no
+elimina el ticket.
+
+`SLACK_WEBHOOK_URL` es opcional y se limita a webhooks HTTPS de
+`hooks.slack.com`. Solo notifica prioridades `high`/`critical` y el mensaje
+incluye ticket, prioridad y categoría; nunca descripción, conversación,
+capturas o contacto. El resultado se persiste y audita.
 
 ## Seguimiento de tickets
 
@@ -294,4 +350,36 @@ El panel y sus endpoints de datos requieren una conexión de loopback, pero no
 hay autenticación de técnicos. No expongas el servidor ni compartas el panel
 con usuarios no autorizados. Para Firebase Data Connect, las imágenes se
 almacenan en los metadatos de contexto; para SQLite, en una tabla de adjuntos.
-El endpoint las sirve solo desde conexiones locales.
+El endpoint las sirve solo desde conexiones locales. Las capturas se eliminan
+al resolver el ticket o al superar 180 días; la limpieza se ejecuta al listar
+tickets, crear/resolver tickets o consultar adjuntos.
+
+## Canal Telegram
+
+El cliente MTProto personal se inicia como proceso independiente mediante
+`python -m scripts.telegram_mtproto`; no es un endpoint HTTP. Requiere
+`TELEGRAM_MTPROTO_API_ID`, `TELEGRAM_MTPROTO_API_HASH` y una lista no vacía de
+IDs numéricos en `TELEGRAM_MTPROTO_ALLOWED_USER_IDS`. La lista se aplica a
+mensajes entrantes privados antes de procesar comandos. Solo `/start` y
+`/consulta <problema>` reciben respuesta. La consulta usa las guías locales,
+no llama a Hermes, no crea tickets y no guarda el texto ni el historial en la
+aplicación. El archivo de sesión autenticada se conserva localmente bajo
+`.secrets/telegram-mtproto.session` y debe protegerse como una credencial.
+
+El endpoint siguiente es la alternativa Bot API legacy y no se usa por el
+cliente MTProto:
+
+`POST /api/telegram/webhook` solo acepta chats privados y requiere el header
+`X-Telegram-Bot-Api-Secret-Token` que Telegram configura como `secret_token`.
+El servidor requiere `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET`.
+
+- `/start` entrega aviso de privacidad y reglas.
+- `/consulta <problema>` procesa una sola consulta de hasta 500 caracteres con
+  las guías locales; no invoca Hermes, no crea tickets ni persiste mensajes,
+  identificadores de usuario o historial.
+- Los IDs de actualización se mantienen en una caché acotada en memoria para
+  deduplicar reintentos. Cada fallo al enviar la respuesta produce `503` para
+  que Telegram pueda reintentar.
+- Telegram procesa el texto de entrada y la respuesta. No se deben enviar
+  contraseñas, códigos MFA ni datos confidenciales. El canal no reemplaza el
+  flujo web consentido de escalación.

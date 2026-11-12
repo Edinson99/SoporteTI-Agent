@@ -4,26 +4,33 @@
 
 | Capa | Componente | Responsabilidad | Tecnologia |
 | --- | --- | --- | --- |
-| Interfaz HTTP | `app/main.py` | Expone `GET /health`, `POST /agent/ask` y el chat local `POST /agent/chat`. | FastAPI |
+| Interfaz HTTP | `app/main.py` | Expone API de diagnóstico/chat, estado, métricas locales, tickets y webhook Telegram protegido. | FastAPI |
+| Observabilidad | `app/observability.py` | Agrega métricas en memoria, limita solicitudes y filtra eventos Sentry antes del envío opcional. | Python / Sentry opcional |
 | Chat Hermes | `app/hermes_bridge.py` | Envia pregunta, historial, diagnostico local y capturas temporales a Hermes; configura web y, si hay imagenes, vision. | Hermes CLI / WSL |
 | Contrato HTTP | `AgentAskRequest`, `AgentAskResponse` | Valida solicitud y estructura de respuesta. | Pydantic |
 | Adaptador Lambda | `app/lambda_handler.py` | Adapta eventos de API Gateway HTTP API al mismo contrato y agente. | AWS Lambda |
 | Orquestacion compartida | `app/agent.py` (`AgenteSoporteTI`) | Coordina busqueda, preguntas de seguimiento, recomendaciones y escalacion. | Python |
-| Busqueda y escalacion | `app/tools.py` | Carga conocimiento una vez, normaliza acentos y ordena varias coincidencias completas. | Python |
+| Busqueda y escalacion | `app/tools.py` | Carga conocimiento una vez, normaliza acentos y ordena coincidencias lexicas; opcionalmente combina embeddings locales con FastEmbed. | Python / FastEmbed opcional |
 | Diagnostico | `app/diagnostics.py` | Produce hipotesis heuristicas e interpreta resultados de red declarados por el usuario; no ejecuta comprobaciones. | Python |
 | Conocimiento | `data/conocimiento_soporte.json` | Contiene articulos, palabras clave y pasos de soporte. | JSON versionado |
+| Valoraciones | `app/feedback.py`, `POST /api/feedback`, `GET /api/feedback/summary` | Conserva solo guia, valoracion y fecha UTC en SQLite local, con retencion maxima de 180 dias. | SQLite |
 | Adaptador MCP | `app/mcp_server.py` (`consultar_soporte_ti`) | Publica la misma logica para Hermes mediante stdio; valida el contrato HTTP. | MCP Python SDK |
 | Orquestador conversacional | Hermes Agent | Presenta la conversacion y decide cuando invocar la herramienta MCP. | Hermes |
 | Modelo conversacional | Proveedor configurado en Hermes (Kimi recomendado en esta instalacion) | Redacta la respuesta y puede consultar la web o analizar imagenes mediante las herramientas habilitadas; no es parte del backend Python. | API del proveedor seleccionado |
 | Configuracion de Hermes | `~/.hermes/config.yaml` y entorno privado de Hermes | Registra el servidor MCP y mantiene la credencial del proveedor fuera del repositorio. | YAML y entorno local |
 | Confirmacion de ticket | `POST /agent/tickets` y formulario web | Exige datos de contacto y consentimiento explicito antes de crear el ticket o notificar al tecnico. | FastAPI / navegador |
-| Servicio de tickets | `app/tickets.py` | Persiste tickets y capturas en SQLite por defecto; envia el correo al tecnico con copia (`Cc`) al usuario despues de guardar. | SQLite / Gmail API |
+| Servicio de tickets | `app/tickets.py`, `app/notifications.py` | Persiste tickets/capturas, aplica retención de adjuntos y envía Gmail primario, Resend de respaldo y alertas Slack mínimas. | SQLite / Gmail / Resend / Slack |
 | Backend Firebase | `app/dataconnect_tickets.py` | Implementa persistencia alternativa de tickets, mensajes y auditoria mediante las operaciones del conector. | Python |
 | Puente Data Connect | `app/dataconnect_bridge.mjs` | Ejecuta operaciones permitidas con Firebase Admin SDK y Application Default Credentials (ADC); no acepta consultas arbitrarias del navegador. | Node.js |
-| Servicio Data Connect | `dataconnect/` | Define esquema descargado, conector `support` y operaciones para crear, listar, consultar, resolver tickets y actualizar el estado del correo. | Firebase Data Connect |
+| Servicio Data Connect | `dataconnect/` | Define operaciones de tickets, auditoría de notificaciones, actualización de metadatos y eliminación de adjuntos vencidos. | Firebase Data Connect |
+| Canal Telegram | `scripts/telegram_mtproto.py`, `app/telegram_channel.py` | Cliente de cuenta personal MTProto, allowlist de usuarios privados y consultas de una interacción sin persistir contenido. | Telethon opcional / Telegram MTProto |
+| Canal Bot API legacy | `POST /api/telegram/webhook` | Webhook separado para un bot con secret token; no se usa con el cliente MTProto. | Telegram Bot API |
+| Estado | `app/static/status.html`, `GET /api/status`, `GET /api/metrics` | Muestra liveness y configuración de dependencias; las métricas detalladas son solo loopback. | FastAPI / navegador |
 | Base persistente | Cloud SQL `soporteit-tickets-database` | Almacena las tablas existentes de tickets, mensajes y eventos de auditoria. No se aplican migraciones desde la app. | Cloud SQL for PostgreSQL |
 | Despliegue HTTP | `template.yaml` | Define API Gateway HTTP API y la funcion Lambda de SAM. | AWS SAM |
-| Calidad | `tests/test_agent.py` | Verifica contratos, busqueda, escalacion, MCP y API. | Pytest |
+| Calidad | `tests/test_agent.py`, `tests/test_observability.py`, `tests/test_notifications.py`, `tests/test_telegram_channel.py`, `tests/test_telegram_mtproto.py` | Verifica recuperación, límites, privacidad de telemetría, estados, allowlist y mensajería con APIs simuladas. | Pytest |
+| Calidad de valoraciones | `tests/test_feedback.py` | Verifica minimizacion de datos, agregacion, retencion y acceso loopback. | Pytest / SQLite |
+| Evaluacion de recuperacion | `data/retrieval_evaluation.json`, `scripts/evaluate_retrieval.py` | Mide aciertos lexicos e hibridos, cobertura @3, rescates semanticos y respuestas en casos sin guia. | Python / FastEmbed opcional |
 | Calidad de tickets | `tests/test_tickets.py`, `tests/test_dataconnect_tickets.py` | Verifica persistencia SQLite/Data Connect, idempotencia, escalacion con consentimiento, correo y seguimiento. | Pytest |
 
 ## Mapa del flujo de solicitud
@@ -62,7 +69,16 @@ flowchart TB
         ATTACH_TMP["Capturas temporales<br/>borradas al terminar el turno"]
         WEB["Busqueda web Hermes<br/>documentacion oficial"]
         VISION["Vision Hermes<br/>lectura de capturas"]
-        GMAIL["Gmail API<br/>firma configurada<br/>To: tecnico / Cc: usuario"]
+        GMAIL["Gmail API primario"]
+        RESEND["Resend respaldo<br/>To: tecnico / Cc: usuario"]
+        SLACK["Slack prioridad alta<br/>ticket, categoria, prioridad"]
+        TG["Proceso MTProto<br/>sesion local + allowlist"]
+        TELEGRAM["Telegram personal<br/>una consulta, sin historial"]
+        BOT_WEBHOOK["Webhook Bot API legacy<br/>secret token"]
+        TG_WEBHOOK["POST /api/telegram/webhook"]
+        METRICS["/api/metrics<br/>ruta, HTTP, latencia"]
+        SENTRY["Sentry opcional<br/>evento depurado"]
+        STATUS["/status<br/>liveness + configuracion"]
         ATTACH_DB[("Adjuntos de ticket<br/>SQLite BLOB / Firebase")]
         UI["Interfaz web<br/>confirma contacto y autorizacion"]
     end
@@ -104,6 +120,16 @@ flowchart TB
     NODE_BRIDGE --> CONNECTOR
     CONNECTOR --> CLOUDSQL
     TICKET_SVC -->|"despues de persistir"| GMAIL
+    GMAIL -->|"solo en fallo/no configurado"| RESEND
+    TICKET_SVC -->|"solo high/critical"| SLACK
+    API --> METRICS
+    API -->|"solo excepciones depuradas"| SENTRY
+    API --> STATUS
+    TELEGRAM -->|"mensajes entrantes"| TG
+    TG -->|"diagnostico local puntual"| AGENT
+    TG -->|"respuesta"| TELEGRAM
+    BOT_WEBHOOK --> TG_WEBHOOK
+    TG_WEBHOOK -->|"alternativa legacy"| API
     RESP -->|"HTTP API/Lambda"| U
     RESP -->|"resultado de herramienta"| HERMES
     HERMES -->|"respuesta redactada"| U
@@ -182,16 +208,20 @@ cotidiano, la [guia para usuarios](guia-usuario-hermes-kimi.md).
 
 ## Limites y trabajo futuro
 
-La base de conocimiento sigue siendo local, la busqueda es por palabras clave
-y la confianza es heuristica, no calibrada. Los tickets tienen persistencia
+La base de conocimiento sigue siendo local y la busqueda por palabras clave es
+el comportamiento predeterminado. Desde la version 1.3.9 se puede habilitar
+recuperacion semantica local con `SOPORTE_SEMANTIC_SEARCH=true` e instalar
+`requirements-semantic.txt`; los embeddings no se envian a un proveedor externo.
+La confianza sigue siendo heuristica, no calibrada. Los tickets tienen persistencia
 SQLite o Data Connect/Cloud SQL segun la configuracion, pero el panel local no
 autentica a los tecnicos. Para uso productivo siguen pendientes, segun el modo
-de despliegue, autenticacion, autorizacion de tecnicos, controles de privacidad
-y retencion, RAG, herramientas remotas autorizadas y revision de articulos.
+de despliegue, autenticacion y autorizacion de tecnicos, controles adicionales
+de privacidad y retencion, un ciclo de revision de articulos, herramientas
+remotas autorizadas y telemetria distribuida.
 Las recomendaciones siguen siendo informativas y deben escalarse si no
 coinciden con el entorno institucional.
 
-La [fase de mejora propuesta](fase-mejora.md) describe opciones para evolucionar
-la recuperacion de conocimiento, la observabilidad y los canales de soporte.
-Es una hoja de ruta pendiente de decisiones; no modifica el comportamiento ni
-la arquitectura implementada actualmente.
+La [fase de mejora](fase-mejora.md) documenta la recuperación semántica y el
+feedback de la etapa 1, además de las etapas 2–5 implementadas en la versión
+1.4.0. La aprobación de conocimiento derivado de tickets y las medidas de
+autenticación para despliegues multiusuario siguen pendientes.

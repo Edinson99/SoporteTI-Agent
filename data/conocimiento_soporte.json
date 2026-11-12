@@ -12,7 +12,7 @@
     },
     {
       "id": "kb_rendimiento_001",
-      "palabras_clave": ["lento", "lenta", "rendimiento", "bloqueado"],
+      "palabras_clave": ["lento", "lenta", "rendimiento", "bloqueado", "responde muy despacio"],
       "pasos": [
         "Cierra aplicaciones que no estes utilizando.",
         "Reinicia el equipo si lleva mucho tiempo encendido.",
@@ -22,7 +22,7 @@
     },
     {
       "id": "kb_impresora_001",
-      "palabras_clave": ["impresora", "imprime", "impresion"],
+      "palabras_clave": ["impresora", "imprime", "impresion", "el dispositivo para imprimir no saca documentos"],
       "pasos": [
         "Verifica que la impresora este encendida y conectada.",
         "Comprueba que tenga papel y no muestre un mensaje fisico de error.",
@@ -42,7 +42,7 @@
     },
     {
       "id": "kb_acceso_cuenta_001",
-      "palabras_clave": ["no puedo iniciar sesion", "cuenta bloqueada", "cuenta esta bloqueada", "bloqueo de cuenta", "restablecer contraseña", "restablecer contrasena"],
+      "palabras_clave": ["no puedo iniciar sesion", "cuenta bloqueada", "cuenta esta bloqueada", "bloqueo de cuenta", "se me bloqueo la cuenta y no puedo entrar", "restablecer contraseña", "restablecer contrasena"],
       "pasos": [
         "Comprueba que el usuario este escrito correctamente y que el teclado no tenga activadas teclas inesperadas.",
         "Si olvidaste la contraseña, utiliza el portal institucional oficial de recuperacion.",
@@ -62,7 +62,7 @@
     },
     {
       "id": "kb_vpn_001",
-      "palabras_clave": ["vpn", "acceso remoto", "conexion remota"],
+      "palabras_clave": ["vpn", "acceso remoto", "conexion remota", "red corporativa desde fuera de la oficina", "la conexion para trabajar desde casa esta fallando"],
       "pasos": [
         "Confirma que tienes una conexion a internet estable antes de iniciar la VPN.",
         "Abre el cliente VPN institucional y registra el mensaje de error exacto si aparece.",
@@ -82,7 +82,7 @@
     },
     {
       "id": "kb_perifericos_001",
-      "palabras_clave": ["teclado", "mouse", "raton", "microfono", "auriculares", "audifonos", "webcam", "camara web"],
+      "palabras_clave": ["teclado", "mouse", "raton", "microfono", "auriculares", "audifonos", "webcam", "camara web", "el microfono no transmite mi voz durante la videollamada"],
       "pasos": [
         "Comprueba que el dispositivo este conectado y que el cable o puerto no tenga daños visibles.",
         "Si es USB, prueba otro puerto disponible; si es inalambrico, confirma que tenga bateria y este encendido.",
@@ -261,7 +261,7 @@
     },
     {
       "id": "kb_acad_proyector_hdmi_aula_001",
-      "palabras_clave": ["proyector hdmi no da imagen", "proyector hdmi del aula no da imagen", "pantalla de aula sin senal", "proyector no detecta laptop", "video beam no funciona"],
+      "palabras_clave": ["proyector hdmi no da imagen", "proyector hdmi del aula no da imagen", "pantalla de aula sin senal", "proyector no detecta laptop", "video beam no funciona", "la imagen del aula no aparece en el proyector"],
       "pasos": [
         "Comprueba que el proyector este encendido y que la entrada seleccionada coincida con el cable conectado.",
         "Asegura el cable HDMI en ambos extremos y prueba la opcion Duplicar con Windows + P si usas Windows.",
@@ -272,7 +272,19 @@
     },
     {
       "id": "kb_fin_excel_macro_xlsm_congelado_001",
-      "palabras_clave": ["excel se congela con macro", "xlsm no responde", "excel macro lento", "libro excel pesado", "macro de excel bloqueada"],
+      "palabras_clave": [
+        "excel se congela con macro",
+        "xlsm no responde",
+        "excel macro lento",
+        "libro excel pesado",
+        "macro de excel bloqueada",
+        "excel deja de responder cuando ejecuto una macro",
+        "mi libro xlsm se congela al ejecutar una macro",
+        "excel tarda mucho al ejecutar una macro",
+        "excel se queda congelado al abrir un archivo xlsm",
+        "la macro de excel deja el libro sin responder",
+        "excel se congela cuando actualizo datos desde una macro"
+      ],
       "pasos": [
         "Si el archivo proviene de una fuente no confiable, no habilites macros ni lo abras; reportalo al equipo de seguridad.",
         "Para un archivo institucional conocido, guarda una copia de trabajo en la ubicacion aprobada y anota la version de Excel y el mensaje.",

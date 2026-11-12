@@ -20,4 +20,14 @@ if (-not (Test-Path ".venv\Scripts\Activate.ps1")) {
 
 . .\.venv\Scripts\Activate.ps1
 Write-Host "Iniciando Soporte TI: interfaz en http://127.0.0.1:$Port (API docs en /docs)..." -ForegroundColor Cyan
-uvicorn app.main:app --host 127.0.0.1 --reload --reload-dir app --port $Port
+$uvicornArgs = @(
+    "app.main:app",
+    "--host", "127.0.0.1",
+    "--reload",
+    "--reload-dir", "app",
+    "--port", "$Port"
+)
+if (Test-Path ".env") {
+    $uvicornArgs += @("--env-file", ".env")
+}
+uvicorn @uvicornArgs

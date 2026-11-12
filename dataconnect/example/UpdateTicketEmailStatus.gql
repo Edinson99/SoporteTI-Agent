@@ -4,6 +4,8 @@ mutation UpdateTicketEmailStatus(
   $contextJson: String!
   $event: TicketAuditEvent_Data!
     @allow(fields: "id ticketId eventType performedBy previousValue newValue")
+  $alertEvent: TicketAuditEvent_Data!
+    @allow(fields: "id ticketId eventType performedBy previousValue newValue")
 ) @auth(level: NO_ACCESS) @transaction {
   ticket_update(
     key: {id: $id}
@@ -14,4 +16,5 @@ mutation UpdateTicketEmailStatus(
     }
   )
   ticketAuditEvent_insert(data: $event)
+  ticketAuditEvent_insert(data: $alertEvent)
 }

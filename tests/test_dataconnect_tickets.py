@@ -15,6 +15,17 @@ from app.dataconnect_tickets import (
 REQUEST_ID = "45038ee8-92a5-4db4-b4b2-965983e367de"
 
 
+@pytest.fixture(autouse=True)
+def disable_external_notification_providers(monkeypatch):
+    for name in (
+        "RESEND_API_KEY",
+        "RESEND_FROM",
+        "RESEND_TO_EMAIL",
+        "SLACK_WEBHOOK_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def _service(monkeypatch, execute):
     service = FirebaseDataConnectTicketService()
     service.node = "node"
@@ -106,6 +117,7 @@ def test_crea_ticket_atomico_con_mensajes_y_auditoria(monkeypatch):
     ]
     assert len(create_call[1]["events"]) == 2
     assert calls[1][0] == "update_email_status"
+    assert calls[1][1]["alertEvent"]["eventType"] == "slack_alert_status"
 
 
 def test_adjuntos_data_connect_se_guardan_y_se_ocultan_de_la_lista(monkeypatch):
@@ -239,6 +251,7 @@ def test_resuelve_ticket_y_guarda_evento_de_auditoria():
         if operation == "resolve_ticket":
             row["status"] = "resolved"
             row["resolutionNote"] = variables["resolutionNote"]
+            row["contextJson"] = variables["contextJson"]
             return {}
         raise AssertionError(operation)
 
@@ -253,6 +266,38 @@ def test_resuelve_ticket_y_guarda_evento_de_auditoria():
     assert calls[1][0] == "resolve_ticket"
     assert calls[1][1]["event"]["eventType"] == "ticket_resolved"
     assert calls[1][1]["event"]["performedBy"] == "local_panel"
+    assert json.loads(row["contextJson"])["attachments"] == []
+
+
+def test_adjuntos_data_connect_caducan_a_los_180_dias():
+    attachment_id = "55038ee8-92a5-4db4-b4b2-965983e367de"
+    row = _row()
+    row["createdAt"] = datetime(2026, 1, 1, tzinfo=timezone.utc).isoformat()
+    metadata = json.loads(row["contextJson"])
+    metadata["attachments"] = [
+        {
+            "id": attachment_id,
+            "file_name": "evidencia.png",
+            "content_type": "image/png",
+            "size": 20,
+            "data_base64": base64.b64encode(b"\x89PNG\r\n\x1a\n").decode("ascii"),
+        }
+    ]
+    row["contextJson"] = json.dumps(metadata)
+    calls = []
+
+    def execute(operation, variables):
+        calls.append((operation, variables))
+        return {"ticket": row} if operation == "get_ticket" else {}
+
+    service = FirebaseDataConnectTicketService()
+    service.node = "node"
+    service._execute = execute
+
+    ticket_number = metadata["ticket_number"]
+    assert service.get_attachment(ticket_number, attachment_id) is None
+    assert calls[1][0] == "update_ticket_metadata"
+    assert json.loads(calls[1][1]["contextJson"])["attachments"] == []
 
 
 def test_rechaza_numero_de_ticket_con_formato_no_reconocido():

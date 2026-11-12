@@ -11,6 +11,7 @@ const operations = {
   get_ticket: ["GetSupportTicket.gql", "read"],
   list_tickets: ["ListSupportTickets.gql", "read"],
   update_email_status: ["UpdateTicketEmailStatus.gql", "write"],
+  update_ticket_metadata: ["UpdateTicketMetadata.gql", "write"],
   resolve_ticket: ["ResolveSupportTicket.gql", "write"],
 };
 

@@ -1,0 +1,3 @@
+mutation UpdateTicketMetadata($id: UUID!, $contextJson: String!) @auth(level: NO_ACCESS) {
+  ticket_update(key: {id: $id}, data: {contextJson: $contextJson})
+}

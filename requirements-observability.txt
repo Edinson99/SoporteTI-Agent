@@ -1,0 +1,2 @@
+# Optional telemetry exporter; local metrics and request limits need no package.
+sentry-sdk[fastapi]>=2,<3

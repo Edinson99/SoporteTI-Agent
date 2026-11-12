@@ -1,18 +1,20 @@
-# Fase de mejora propuesta
+# Fase de mejora: propuesta, logros y pendientes
 
 ## De un agente determinista a un soporte asistido por conocimiento
 
-SoporteTI-Agent ya ofrece diagnóstico local basado en guías versionadas,
-conversación mediante Hermes, tickets con consentimiento y persistencia SQLite
-o Firebase Data Connect si este no tiene conocimiento a la mano hace consultas web desde fuentes confiables. La siguiente fase propone mejorar la recuperación de
-conocimiento, aprender de las resoluciones verificadas y reforzar la operación
-sin sustituir el control humano ni cambiar silenciosamente el comportamiento
-actual.
+Esta hoja de ruta comenzó como propuesta para mejorar la recuperación de
+conocimiento, aprender de resoluciones verificadas y reforzar la operación sin
+sustituir el control humano. Las versiones 1.3.9–1.4.0 ya implementaron varias
+partes; aquí se separan los logros verificables, lo parcialmente terminado y
+los siguientes pasos todavía recomendados.
 
-> **Estado:** propuesta de evolución. Ninguna de las capacidades de esta hoja
-> de ruta debe considerarse implementada por el solo hecho de estar descrita
-> aquí. La arquitectura vigente y sus límites se mantienen hasta que cada
-> cambio se desarrolle, pruebe y documente como funcionalidad disponible.
+> **Estado al 11 de noviembre de 2026:** recuperación semántica y feedback
+> locales disponibles (etapa 1, parcial); capacidades de las etapas 2–5
+> implementadas en 1.4.0. Gmail, Resend, Slack, Firebase (solo lectura) y la
+> conexión MTProto pasaron sus comprobaciones descritas abajo. La entrega de
+> eventos a Sentry sigue sin confirmar. La verificación no equivale a certificar
+> disponibilidad continua ni todos los flujos productivos. Los secretos no se
+> incluyen en el repositorio. Consulta el [informe de validación externa](validacion-integraciones-2026-11-11.md).
 
 ## Visión de la evolución
 
@@ -30,7 +32,7 @@ flowchart LR
     R -.-> C["Caché opcional<br/>con caducidad"]
 ```
 
-El ciclo propuesto conserva una distinción importante: un ticket resuelto es
+El ciclo objetivo conserva una distinción importante: un ticket resuelto es
 una fuente potencial de conocimiento, no una guía validada automáticamente.
 La nota del técnico y la descripción original pueden ser incompletas,
 específicas de una persona o contener datos sensibles. La IA puede ayudar a
@@ -39,29 +41,91 @@ humana.
 
 ## Hoja de ruta
 
-Las etapas están ordenadas para establecer primero calidad y controles sobre
-los datos antes de añadir servicios externos. Su alcance, proveedores y
-criterios de aceptación deberán confirmarse al iniciar cada etapa.
+El usuario autorizó las integraciones con minimización de datos. Son optativas y
+sus credenciales viven fuera del repositorio. La tabla distingue entrega de
+funcionalidad de la comprobación en un entorno real:
 
-| Etapa | Propuesta | Componentes candidatos | Resultado esperado |
+| Etapa | Alcance que se propuso | Logro y estado actual | Pendiente principal |
 | --- | --- | --- | --- |
-| **1. Conocimiento y recuperación** | Combinar la búsqueda léxica existente con embeddings para recuperar guías y casos previos semánticamente similares. Añadir un flujo de revisión de borradores derivados de tickets resueltos y feedback explícito sobre utilidad. | `app/tools.py`, `app/dataconnect_tickets.py`, `data/conocimiento_soporte.json`; posible `app/learning_engine.py`, por definir. | Mejorar la recuperación de sinónimos y convertir resoluciones verificadas en artículos versionados, con trazabilidad y aprobación. |
-| **2. Rendimiento y observabilidad** | Evaluar caché de consultas seguras y límites de uso; registrar latencia, errores, consumo y casos sin coincidencia para guiar mejoras. | `app/main.py`, `app/hermes_bridge.py`, `requirements.txt`; Redis/Upstash, Sentry y/o Langfuse, si se aprueban. | Detectar fallos y brechas de conocimiento, y reducir trabajo repetido sin almacenar respuestas obsoletas o información personal innecesaria. |
-| **3. Notificaciones resilientes** | Añadir un proveedor de correo de respaldo y alertas operativas configurables para el equipo de soporte. | `app/tickets.py`, `app/dataconnect_tickets.py`; Resend y un canal de alertas, si se aprueban. | Mantener el estado de envío y la auditoría correctos cuando falle el proveedor principal; priorizar avisos según reglas verificables. |
-| **4. Evidencias y canal móvil** | Evaluar almacenamiento de evidencias fuera de la base de tickets y un canal alternativo de atención, con webhook protegido. | `app/main.py`, `app/static/index.html`, `dataconnect/schema/schema.gql`; Cloudflare R2 y/o Telegram, si se aprueban. | Facilitar la recepción controlada de evidencias y consultas desde dispositivos móviles, conservando el consentimiento y la protección de datos. |
-| **5. Estado del servicio y madurez operativa** | Mostrar interrupciones conocidas y completar el monitoreo de errores y dependencias externas. | `app/main.py`, `app/static/index.html`, `app/static/tickets.html`; Sentry e Instatus, si se aprueban. | Comunicar incidentes generales y ofrecer señales operativas útiles sin confundir el estado de la API con el de sus dependencias. |
+| **1. Conocimiento y recuperación** | Búsqueda híbrida, benchmark, feedback y borradores de conocimiento revisados por humanos. | Recuperación semántica local opcional (1.3.9), benchmark sintético (1.3.10), feedback mínimo local (1.3.11) y mejoras de paráfrasis (1.3.12–1.3.13). **Parcial.** | Pipeline de borrador, anonimización, aprobación humana, publicación/versionado, reversión y evaluación con consultas representativas anonimizadas. |
+| **2. Rendimiento y observabilidad** | Métricas, límites y errores depurados hacia Sentry. | Contadores/latencia en memoria, rate limit por proceso y filtro de datos implementados. Sentry está configurado, pero un evento sintético no obtuvo respuesta HTTP en la validación. **Parcial: envío Sentry por diagnosticar.** | Confirmar entrega Sentry y definir alertas/retención; métricas distribuidas si se despliega en varias instancias. No se implementó caché de respuestas ni Redis. |
+| **3. Notificaciones resilientes** | Gmail primario, Resend de respaldo y Slack para prioridad alta/crítica. | Estados, clasificación y auditoría implementados. Gmail, Resend y Slack aceptaron mensajes sintéticos reales. **Implementada y comprobación básica aprobada.** | Probar fin a fin el fallo Gmail→Resend y tickets de prioridad alta, reintentos, duplicados y cuotas sin generar tickets de producción. |
+| **4. Evidencias y canal móvil** | Retención de capturas y canal Telegram de consulta puntual. | Eliminación al resolver o tras 180 días; canal MTProto personal con allowlist y sesión local. La sesión se conectó y estaba autorizada. **Implementada; Telegram comprobado a nivel de conexión solamente.** | Probar `/start` y `/consulta` desde una cuenta permitida; automatizar limpieza en vez de depender de accesos a tickets; revisar supervisión del proceso MTProto. |
+| **5. Estado y madurez operativa** | Página de estado y resumen sin dependencia de status externo. | `/status`, `/api/status`, `/api/metrics` y documentación de límites implementados. Firebase Data Connect respondió a una lectura de tickets (11 elementos) sin cambios. **Implementada; lectura real aprobada.** | Autenticación/autorización para técnicos, monitoreo real de dependencias con timeout y protección antes de cualquier exposición multiusuario. |
+
+El informe [validacion-integraciones-2026-11-11.md](validacion-integraciones-2026-11-11.md)
+registra el tipo de prueba, el resultado y sus límites. Una respuesta HTTP 200
+de correo/webhook confirma que el proveedor aceptó la solicitud, no la entrega
+final al buzón o a todos los miembros del canal.
 
 ### Etapa 1 — Recuperación semántica y ciclo de conocimiento
 
-La búsqueda actual se basa en palabras clave normalizadas. Como siguiente paso
-se puede evaluar una recuperación híbrida:
+La versión 1.3.9 añade una primera entrega de recuperación semántica local con
+FastEmbed, declarado como dependencia opcional en
+`requirements-semantic.txt`, y un modelo multilingüe. Se activa con
+`SOPORTE_SEMANTIC_SEARCH=true`; por defecto se conserva la búsqueda léxica.
+La primera consulta habilitada descarga el modelo al equipo. No se envían las
+preguntas ni el contenido de la base a un servicio de embeddings. Mantener
+FastEmbed fuera de `requirements.txt` evita ampliar el paquete de AWS Lambda
+cuando no se habilita esta función; Lambda conserva la búsqueda léxica.
+
+El umbral inicial de similitud es `0.65` y se considera provisional. Antes de
+habilitar la función en producción, debe medirse precisión y cobertura con un
+conjunto representativo de consultas reales previamente anonimizadas. El
+feedback de utilidad se incorpora en la versión 1.3.11; el flujo de aprobación
+de borradores de conocimiento sigue pendiente.
+
+La version 1.3.10 incorpora un benchmark reproducible de consultas sinteticas
+en `data/retrieval_evaluation.json`, ejecutable con
+`python scripts/evaluate_retrieval.py`. En la primera medicion obtuvo 11/16
+aciertos hibridos en primera posicion (69%), 12/16 con el articulo esperado en
+los tres primeros (75%) y cero resultados en 3/3 consultas sin guia. En el
+grupo de parafrasis, el acierto en primera posicion fue 5/10 (50%); aparecieron
+una guia incorrecta para una consulta sobre microfono y una guia de Internet
+para una consulta sobre acceso remoto. El conjunto es sintetico y pequeno, por
+lo que estos valores sirven como linea base, no como certificacion de calidad.
+La busqueda semantica debe permanecer optativa hasta mejorar y validar estos
+resultados con casos representativos anonimizados.
+
+La version 1.3.11 permite valorar la guia principal como util o no util. Se
+guarda localmente un identificador idempotente del voto, el identificador de
+guia, la valoracion y la fecha UTC; no se guardan usuario, pregunta,
+conversacion, contacto ni texto libre. El resumen local devuelve conteos por
+guia y esta restringido a loopback. Las valoraciones orientan la revision,
+pero no publican ni modifican conocimiento automaticamente.
+
+La version 1.3.12 añade frases de recuperacion para parafrasis del problema
+"Excel se congela con macro", seis casos sinteticos al benchmark y pruebas
+deterministas para esas consultas. Las seis recuperan la guia esperada en
+primera posicion tanto con busqueda lexica como hibrida. En el conjunto
+ampliado, el resultado hibrido es 17/22 (77%) en primera posicion, 18/22 (82%)
+entre los tres primeros y 0/3 falsos positivos en consultas sin guia. El grupo
+previo de parafrasis conserva 11/16 (69%), por lo que estos casos no resuelven
+las brechas generales observadas. La guia mantiene sus precauciones: no
+habilitar macros de fuentes no confiables ni debilitar politicas de seguridad.
+El benchmark sintetico no certifica la calidad general de la busqueda semantica.
+
+La version 1.3.13 añade frases de recuperacion para los cinco fallos restantes
+del benchmark: una cuenta bloqueada descrita como imposibilidad de entrar,
+problemas de microfono durante una videollamada, conectividad de trabajo desde
+casa, una impresora que no saca documentos y la imagen ausente en un proyector
+de aula. Las pruebas verifican que cada frase apunta a su guia correspondiente.
+En la medicion actual, la busqueda lexica acierta 21/22 (95%) en primera
+posicion y la hibrida 22/22 (100%); la cobertura hibrida @3 es 22/22, con
+0/3 falsos positivos en consultas sin guia. El grupo de parafrasis alcanza
+15/16 en busqueda lexica y 16/16 en hibrida. Estos resultados provienen de un
+conjunto pequeño y sintetico; la busqueda semantica sigue siendo optativa y
+requiere validacion adicional antes de habilitarse en produccion.
+
+La búsqueda existente se basa en palabras clave normalizadas. La recuperación
+híbrida sigue esta secuencia:
 
 1. Recuperar candidatos por coincidencia léxica y semántica.
 2. Comparar resultados con un conjunto de consultas representativas, incluyendo
    paráfrasis, consultas ambiguas y casos sin solución.
 3. Medir precisión y cobertura antes de habilitar una respuesta automática;
-   cualquier umbral —por ejemplo, una similitud de `0.82`— debe calibrarse con
-   esos datos y no tratarse como valor universal.
+   el umbral inicial de `0.65` es provisional y no debe tratarse como valor
+   universal.
 4. Cuando una consulta no encuentre una guía suficiente, mantener el flujo de
    ticket y resolución humana que ya existe.
 5. Si se genera un borrador de guía a partir de una resolución, eliminar o
@@ -71,65 +135,83 @@ se puede evaluar una recuperación híbrida:
    por sí sola no demuestra que la guía fuera incorrecta, y una respuesta
    positiva no demuestra que la solución sea segura en otros entornos.
 
-**Opciones a evaluar:** embeddings locales, por ejemplo con `fastembed`, para
-mantener el contenido en el equipo; búsqueda coseno en memoria para un índice
-pequeño; o un vector store administrado, como Qdrant Cloud, si se justifica
-transferir datos y operar una dependencia externa. Costos, límites gratuitos,
-retención, rendimiento y condiciones de cada proveedor deben verificarse al
-momento de la decisión.
+La implementación actual calcula similitud coseno local en memoria para el
+conjunto versionado de guías. Un vector store administrado no se adopta en esta
+entrega. Si se evalúa posteriormente, habrá que verificar costos, límites,
+retención, rendimiento y condiciones del proveedor.
 
 ### Etapa 2 — Caché y telemetría
 
-Un Redis administrado puede acelerar operaciones repetidas, y herramientas
-como Sentry o Langfuse pueden ayudar a entender errores, latencias y
-consultas sin guía. Son alternativas a evaluar, no requisitos ni componentes
-configurados actualmente.
+`app/observability.py` agrega por proceso cantidad de solicitudes, códigos HTTP,
+errores 5xx y latencia media/máxima usando rutas parametrizadas. No escribe IP,
+preguntas, conversaciones, contactos, imágenes ni prompts. `GET /api/metrics`
+requiere loopback. `SOPORTE_RATE_LIMIT_PER_MINUTE` limita las rutas de
+diagnóstico/chat/ticket/feedback/webhook (60 por minuto por defecto, proceso y
+origen de conexión); la limitación es local a cada instancia, no distribuida.
 
-- Limitar la caché a resultados adecuados, con expiración, invalidación cuando
-  cambie el conocimiento y un comportamiento correcto si el servicio opcional
-  no está disponible.
-- No guardar por defecto el historial, datos de contacto, imágenes, credenciales
-  ni prompts completos. Definir qué campos se registran, quién puede verlos y
-  durante cuánto tiempo.
-- Evitar que claves basadas solo en la pregunta mezclen respuestas cuando
-  cambien el contexto, la versión de las guías o los permisos.
-- Configurar límites de uso y respuestas explícitas ante fallos; una caída de
-  caché no debe cambiar una respuesta correcta por una respuesta obsoleta.
+Sentry se activa solo con `SENTRY_DSN` y la dependencia opcional
+`requirements-observability.txt`. El filtro permite únicamente metadatos
+técnicos mínimos, tipo de excepción y frames sin variables; omite solicitud,
+usuario, mensaje, extras y breadcrumbs. La disponibilidad de Sentry no afecta
+la respuesta del agente.
+
+No se agregó Redis ni caché de respuestas. La evaluación concluyó que el chat
+incluye contexto e historial del usuario y que cachear respuestas puede
+mezclarlos o servir resultados obsoletos. La caché actual se limita a la base
+de conocimiento/índice local en memoria. Tampoco se informan tokens/costos:
+Hermes no proporciona aquí una medición fiable común a todos los proveedores.
 
 ### Etapa 3 — Correo de respaldo y avisos al equipo
 
-Se puede evaluar Resend como alternativa al envío actual por Gmail API y un
-webhook de Discord, Slack u otro canal para avisos de prioridad. El envío
-principal y el de respaldo deben distinguir fallos transitorios de errores de
-credenciales o configuración, evitar duplicados e informar el estado real en
-el ticket.
+Gmail se conserva como primario; `RESEND_API_KEY`, `RESEND_FROM` y
+`RESEND_TO_EMAIL` habilitan el respaldo cuando Gmail falla o no está configurado.
+Las clases `configuration` y `transient` distinguen errores de credenciales/
+configuración de errores de transporte/cuota/servidor. El resultado y el
+proveedor se persisten en SQLite o metadatos Data Connect, se incluyen en el
+panel y se auditan. El ticket se guarda antes de las notificaciones y el
+`request_id` previene envíos duplicados por reintentos de creación.
 
-El mensaje al canal técnico debe contener solo los datos mínimos necesarios.
-Los webhooks son credenciales: deben residir fuera del repositorio y no aparecer
-en logs. Las prioridades y reglas de escalado deben derivarse del contrato del
-ticket y estar cubiertas por pruebas.
+`SLACK_WEBHOOK_URL` solo acepta HTTPS en `hooks.slack.com`. El aviso se limita
+a prioridades `high`/`critical` y contiene número de ticket, prioridad y
+categoría, sin texto, conversación, contacto ni captura. El estado se guarda
+y el backend Data Connect genera evento de auditoría. Los webhooks y API keys
+se configuran por entorno y nunca se incluyen en logs o repositorio. La
+configuración real de proveedor y su entrega deben probarse en el entorno
+operativo antes de producción.
 
 ### Etapa 4 — Evidencias y canal móvil
 
-Para evidencias, un almacenamiento de objetos compatible con S3 como Cloudflare
-R2 podría reducir el crecimiento de SQLite o Cloud SQL. Antes de adoptarlo, hay
-que definir consentimiento, retención y eliminación, límites de tamaño,
-validación del tipo real del archivo, acceso privado y enlaces firmados con
-caducidad. El almacenamiento no debe habilitar cargas públicas ni ampliar los
-datos enviados al proveedor del modelo sin informar al usuario.
+No se incorporó R2: las capturas siguen en el almacenamiento privado de tickets
+configurado (SQLite o Data Connect). Se conservan validaciones de MIME/firma y
+límite de tamaño; se eliminan al resolver el ticket o al superar 180 días. La
+limpieza perezosa se ejecuta al crear/listar/resolver tickets o consultar
+adjuntos, y las capturas no se envían a Resend ni Slack. El backend Data Connect
+actualiza el metadato de adjuntos al resolver y en consultas posteriores a la
+caducidad.
 
-Telegram puede estudiarse como canal de contingencia. Requeriría validar el
-origen de cada webhook, controlar la asociación entre usuario y conversación,
-limitar abusos y explicar cómo se procesan y conservan los mensajes. No debe
-tratarse como un canal seguro para credenciales o información sensible.
+El cliente MTProto opcional `scripts/telegram_mtproto.py` usa una cuenta
+personal, requiere `TELEGRAM_MTPROTO_API_ID`, `TELEGRAM_MTPROTO_API_HASH` y
+una lista explícita `TELEGRAM_MTPROTO_ALLOWED_USER_IDS`; sin lista no inicia.
+Procesa solo mensajes privados `/start` y `/consulta <problema>` de IDs
+autorizados, con diagnóstico determinista local y máximo 500 caracteres. No se
+invoca Hermes, no se crean tickets y la aplicación no almacena mensajes,
+identidad ni historial. La sesión autenticada queda en
+`.secrets/telegram-mtproto.session`, excluida de Git y sensible como una
+credencial de cuenta. El inicio de sesión inicial es interactivo y debe
+realizarse localmente. El endpoint `POST /api/telegram/webhook` permanece como
+alternativa legacy independiente para Bot API con token y secreto.
 
 ### Etapa 5 — Estado público y monitoreo
 
-Un proveedor de estado como Instatus podría informar interrupciones generales.
-La interfaz debería indicar cuándo la información está desactualizada y no
-bloquear el acceso al soporte por una consulta fallida al proveedor de estado.
-Sentry puede complementar la detección de excepciones si se configura con
-filtrado de datos personales, secretos y contenido de conversaciones.
+`/health` conserva su semántica de liveness de la API. `/status` y
+`GET /api/status` muestran el estado general, hora de comprobación y
+configuración resumida sin secretos. La página actualiza cada 30 segundos y
+advierte si la información supera 60 segundos; si no puede cargar, no bloquea
+el acceso al chat. El endpoint no consulta servicios externos ni asegura la
+disponibilidad real de Firebase, Hermes, Gmail, Resend, Slack o Telegram:
+indica configuración, no un chequeo de conectividad. El estado de la API no
+se confunde con esos componentes. No se contrató Instatus; la vista es local
+al servicio.
 
 ## Principios de diseño y seguridad
 
@@ -151,17 +233,95 @@ filtrado de datos personales, secretos y contenido de conversaciones.
   o suficiente. Confirmar límites, residencia de datos y condiciones vigentes
   antes de adoptar un proveedor.
 
-## Decisiones pendientes antes de iniciar
+## Activación y límites pendientes
 
-1. ¿La primera etapa prioriza búsqueda semántica local o se acepta un servicio
-   vectorial administrado?
-2. ¿Quién revisará y aprobará los borradores de conocimiento y con qué
-   procedimiento de publicación y reversión?
-3. ¿Qué eventos y campos se pueden observar, y cuál será la política de
-   retención y acceso?
-4. ¿Qué canales externos están aprobados por la organización para correo,
-   alertas, evidencias y mensajería?
-5. ¿Qué criterios medibles debe cumplir cada etapa para pasar a producción?
+1. Sentry está configurado y su evento sintético fue filtrado localmente, pero
+   la entrega no se confirmó; revisar conectividad, estado del proyecto y
+   respuesta del transporte antes de depender de él para alertas operativas.
+2. Cargar secretos de Resend, Slack y Telegram solo en el entorno local o
+   gestor de secretos autorizado; proteger especialmente el archivo de sesión
+   MTProto y no guardar credenciales en el repositorio.
+3. La sesión MTProto se conectó y verificó como autorizada. Queda probar
+   `/start` y `/consulta` desde una cuenta permitida sin divulgar códigos,
+   teléfonos ni el archivo de sesión.
+4. Gmail, Resend y Slack aceptaron mensajes sintéticos de prueba; Firebase se
+   leyó sin modificaciones. El informe de validación detalla qué no se probó
+   y no certifica la entrega final de correo ni los flujos completos de tickets.
+5. Investigar y confirmar la entrega a Sentry: el evento sintético quedó en la
+   cola del SDK y no se observó respuesta HTTP dentro de 45 segundos.
+6. Definir revisión humana y reversión de conocimiento derivado de tickets;
+   esta parte de la etapa 1 sigue sin implementarse.
+
+## Mejoras recomendadas para siguientes iteraciones
+
+Las siguientes propuestas no forman parte de lo implementado en 1.4.0. Se
+ordenan por riesgo y valor operativo; el orden no implica aprobación ni
+compromiso de alcance.
+
+### Prioridad inmediata — seguridad antes de uso multiusuario
+
+- **Autenticación y autorización del panel/API de tickets.** El panel actual
+  está limitado a loopback, pero no autentica técnicos. Antes de abrirlo en una
+  red o compartirlo, añadir identidad, roles, auditoría de acceso, protección
+  CSRF cuando corresponda y pruebas de acceso denegado.
+- **Protección y ciclo de vida de secretos.** Rotar cualquier clave o código
+  que se haya compartido accidentalmente, usar un gestor de secretos en
+  despliegues y definir rotación/revocación para Gmail, Sentry, Resend, Slack,
+  Firebase y la sesión MTProto. No registrar valores sensibles.
+- **Cerrar la validación de Sentry.** Confirmar respuesta de ingesta con un
+  evento controlado, revisar el proyecto/entorno y probar que el evento
+  recibido no contiene datos de usuario. Mantener el servicio como no verificado
+  hasta entonces.
+
+### Prioridad alta — fiabilidad y operación
+
+- **Prueba integral de notificaciones.** En un entorno de prueba, forzar de
+  manera controlada el fallo de Gmail y verificar respaldo Resend, estados,
+  auditoría, deduplicación y recuperación sin enviar duplicados a usuarios.
+  Probar también alertas Slack `high`/`critical` y el no envío para prioridades
+  inferiores.
+- **Proceso supervisado para MTProto.** Ejecutarlo con un supervisor/servicio
+  que reinicie ante fallos, tenga apagado seguro y compruebe su estado sin
+  exponer el archivo de sesión. Añadir prueba real controlada de `/start` y
+  `/consulta` solo con una cuenta autorizada.
+- **Retención automática fiable.** La eliminación de capturas es perezosa y
+  depende de operaciones de tickets/adjuntos. Añadir tarea periódica con
+  métricas de elementos eliminados, errores y prueba de recuperación/retención
+  para SQLite y Data Connect.
+- **Estado operativo real.** Diferenciar liveness de readiness; sondear
+  dependencias con timeout y sin exponer detalles internos. Añadir alertas por
+  errores, latencias, fallos de correo y antigüedad de datos solo después de
+  resolver la entrega de Sentry o elegir otro canal comprobado.
+- **Resiliencia distribuida.** Si se ejecutan varias instancias, trasladar
+  rate limit, idempotencia/deduplicación y métricas a almacenamiento común.
+  Añadir colas/reintentos limitados y una vía de inspección de notificaciones
+  fallidas sin guardar contenido innecesario.
+
+### Prioridad media — calidad del conocimiento y datos
+
+- **Ciclo editorial de conocimiento.** Crear borrador a partir de resolución,
+  quitar datos personales, guardar fuente/autor/fecha, requerir aprobación
+  técnica, publicar con versión y permitir reversión.
+- **Evaluación de recuperación.** Ampliar el conjunto sintético con casos
+  anonimizados representativos, medir precisión@1/@3 y falsos positivos por
+  categoría, revisar cada cambio de umbral y conservar una línea base.
+- **Gestión de tickets y privacidad.** Definir retención para tickets,
+  conversaciones y datos de contacto (no solo capturas), borrado/exportación
+  según política institucional y límites de acceso por rol.
+- **Backups y recuperación.** Documentar cifrado, periodicidad, restauración
+  probada y responsabilidades para SQLite y Firebase/Cloud SQL.
+
+### Oportunidades futuras — evaluar antes de adoptar
+
+- Caché solo para contenido inmutable/versionado y sin mezclar historial,
+  identidad, permisos ni contexto de consultas.
+- Panel operativo con métricas agregadas y tendencias, sin preguntas ni datos
+  personales; exportación distribuida solo si el despliegue lo necesita.
+- Almacenamiento de objetos privado para evidencias si el tamaño/volumen lo
+  justifica, con enlaces de duración limitada, control de acceso y borrado
+  verificable.
+- Integración con mesa de servicio institucional o canal adicional solo tras
+  definir consentimiento, minimización, idempotencia y plan de salida.
 
 ## Criterios de salida sugeridos
 
@@ -169,3 +329,6 @@ Una etapa estará lista para producción cuando tenga pruebas automatizadas,
 validación funcional con casos representativos, configuración opcional
 documentada, manejo explícito de fallos, revisión de privacidad y seguridad, y
 procedimiento para deshabilitar o revertir la integración sin perder tickets.
+Las integraciones externas deben contar además con una comprobación de
+aceptación y límites documentados; una variable configurada no equivale a
+entrega verificada.

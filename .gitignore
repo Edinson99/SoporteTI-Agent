@@ -25,6 +25,9 @@ env/
 data/tickets.sqlite3
 data/tickets.sqlite3-shm
 data/tickets.sqlite3-wal
+data/feedback.sqlite3
+data/feedback.sqlite3-shm
+data/feedback.sqlite3-wal
 
 # IDE
 .idea/

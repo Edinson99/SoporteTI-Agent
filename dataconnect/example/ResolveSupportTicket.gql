@@ -1,6 +1,7 @@
 mutation ResolveSupportTicket(
   $id: UUID!
   $resolutionNote: String
+  $contextJson: String!
   $event: TicketAuditEvent_Data!
     @allow(fields: "id ticketId eventType performedBy previousValue newValue")
 ) @auth(level: NO_ACCESS) @transaction {
@@ -9,6 +10,7 @@ mutation ResolveSupportTicket(
     data: {
       status: "resolved"
       resolutionNote: $resolutionNote
+      contextJson: $contextJson
       updatedAt_expr: "request.time"
     }
   )

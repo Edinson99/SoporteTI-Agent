@@ -25,6 +25,17 @@ client = TestClient(
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
+@pytest.fixture(autouse=True)
+def disable_external_notification_providers(monkeypatch):
+    for name in (
+        "RESEND_API_KEY",
+        "RESEND_FROM",
+        "RESEND_TO_EMAIL",
+        "SLACK_WEBHOOK_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_ejemplos_json_son_validos_y_contienen_el_contrato():
     request = json.loads((DATA_DIR / "agent_request.json").read_text(encoding="utf-8"))
     response = json.loads((DATA_DIR / "agent_response.json").read_text(encoding="utf-8"))
@@ -80,6 +91,18 @@ def test_base_conocimiento_incluye_guias_ti_frecuentes():
         "No puedo abrir Outlook": "kb_correo_001",
         "Mi cuenta esta bloqueada": "kb_acceso_cuenta_001",
         "No puedo conectarme a la VPN": "kb_vpn_001",
+        "No puedo usar la red corporativa desde fuera de la oficina": "kb_vpn_001",
+        "Se me bloqueo la cuenta y no puedo entrar": "kb_acceso_cuenta_001",
+        "El microfono no transmite mi voz durante la videollamada": "kb_perifericos_001",
+        "La conexion para trabajar desde casa esta fallando": "kb_vpn_001",
+        "El dispositivo para imprimir no saca documentos": "kb_impresora_001",
+        "La imagen del aula no aparece en el proyector": "kb_acad_proyector_hdmi_aula_001",
+        "Excel deja de responder cuando ejecuto una macro": "kb_fin_excel_macro_xlsm_congelado_001",
+        "Mi libro xlsm se congela al ejecutar una macro": "kb_fin_excel_macro_xlsm_congelado_001",
+        "Excel tarda mucho al ejecutar una macro": "kb_fin_excel_macro_xlsm_congelado_001",
+        "Excel se queda congelado al abrir un archivo xlsm": "kb_fin_excel_macro_xlsm_congelado_001",
+        "La macro de Excel deja el libro sin responder": "kb_fin_excel_macro_xlsm_congelado_001",
+        "Excel se congela cuando actualizo datos desde una macro": "kb_fin_excel_macro_xlsm_congelado_001",
         "Necesito instalar programa": "kb_software_001",
         "El microfono no funciona": "kb_perifericos_001",
         "Recibi un correo sospechoso con un enlace sospechoso": "kb_seguridad_correo_001",
@@ -90,6 +113,7 @@ def test_base_conocimiento_incluye_guias_ti_frecuentes():
         "Mi licencia de software expirada": "kb_licencias_activacion_001",
         "Que hace ipconfig en CMD": "kb_cmd_diagnostico_001",
         "Quiero optimizar rendimiento": "kb_optimizacion_equipo_001",
+        "El portátil responde muy despacio y se congela": "kb_rendimiento_001",
         "No resuelve DNS corporativo": "kb_l2_red_enrutamiento_dns_001",
         "El disco hace clic y no puedo recuperar archivos": "kb_l2_recuperacion_datos_001",
         "Error SAP GUI al conectarme al ERP": "kb_l2_software_especializado_erp_001",
@@ -238,6 +262,8 @@ def test_inicio_sirve_interfaz_grafica():
     assert "collectContext()" in respuesta.text
     assert 'fetch("/agent/chat"' in respuesta.text
     assert 'fetch("/agent/tickets"' in respuesta.text
+    assert 'fetch("/api/feedback"' in respuesta.text
+    assert "Guardamos solo la guía, tu valoración y la fecha" in respuesta.text
     assert 'href="/tickets"' in respuesta.text
     assert "Hermes + modelo configurado" in respuesta.text
 

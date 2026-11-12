@@ -1,0 +1,130 @@
+{
+  "description": "Consultas sinteticas etiquetadas para evaluar recuperacion local; no contienen datos de usuarios.",
+  "cases": [
+    {
+      "query": "No tengo internet en mi portatil",
+      "expected_article_id": "kb_internet_001",
+      "group": "lexical"
+    },
+    {
+      "query": "No puedo abrir Outlook",
+      "expected_article_id": "kb_correo_001",
+      "group": "lexical"
+    },
+    {
+      "query": "Mi cuenta esta bloqueada",
+      "expected_article_id": "kb_acceso_cuenta_001",
+      "group": "lexical"
+    },
+    {
+      "query": "No puedo conectarme a la VPN",
+      "expected_article_id": "kb_vpn_001",
+      "group": "lexical"
+    },
+    {
+      "query": "La impresora no imprime",
+      "expected_article_id": "kb_impresora_001",
+      "group": "lexical"
+    },
+    {
+      "query": "Quiero hacer un respaldo para proteger mis archivos",
+      "expected_article_id": "kb_respaldo_datos_001",
+      "group": "lexical"
+    },
+    {
+      "query": "La computadora pierde el acceso a la red inalambrica",
+      "expected_article_id": "kb_internet_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "Necesito conservar copias de mis archivos importantes",
+      "expected_article_id": "kb_respaldo_datos_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "El sistema muestra una pantalla azul y luego se reinicia",
+      "expected_article_id": "kb_pantalla_actualizacion_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "Las aplicaciones se quedan congeladas y todo va lento",
+      "expected_article_id": "kb_rendimiento_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "Se me bloqueo la cuenta y no puedo entrar",
+      "expected_article_id": "kb_acceso_cuenta_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "El microfono no transmite mi voz durante la videollamada",
+      "expected_article_id": "kb_perifericos_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "La aplicacion de correo no muestra los mensajes recibidos",
+      "expected_article_id": "kb_correo_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "La conexion para trabajar desde casa esta fallando",
+      "expected_article_id": "kb_vpn_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "El dispositivo para imprimir no saca documentos",
+      "expected_article_id": "kb_impresora_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "La imagen del aula no aparece en el proyector",
+      "expected_article_id": "kb_acad_proyector_hdmi_aula_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "Excel deja de responder cuando ejecuto una macro",
+      "expected_article_id": "kb_fin_excel_macro_xlsm_congelado_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "Mi libro xlsm se congela al ejecutar una macro",
+      "expected_article_id": "kb_fin_excel_macro_xlsm_congelado_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "Excel tarda mucho al ejecutar una macro",
+      "expected_article_id": "kb_fin_excel_macro_xlsm_congelado_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "Excel se queda congelado al abrir un archivo xlsm",
+      "expected_article_id": "kb_fin_excel_macro_xlsm_congelado_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "La macro de Excel deja el libro sin responder",
+      "expected_article_id": "kb_fin_excel_macro_xlsm_congelado_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "Excel se congela cuando actualizo datos desde una macro",
+      "expected_article_id": "kb_fin_excel_macro_xlsm_congelado_001",
+      "group": "paraphrase"
+    },
+    {
+      "query": "Necesito reservar una sala para la reunion",
+      "expected_article_id": null,
+      "group": "no_match"
+    },
+    {
+      "query": "El almuerzo estuvo delicioso",
+      "expected_article_id": null,
+      "group": "no_match"
+    },
+    {
+      "query": "No funciona",
+      "expected_article_id": null,
+      "group": "no_match"
+    }
+  ]
+}
