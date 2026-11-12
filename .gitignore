@@ -20,6 +20,9 @@ env/
 # Variables de entorno (contienen secretos)
 .env
 .secrets/
+secrets/
+serviceAccountKey.json
+token.json
 
 # Tickets y datos locales
 data/tickets.sqlite3

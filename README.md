@@ -301,6 +301,7 @@ no la disponibilidad de Firebase.
 | **API de diagnóstico local** | FastAPI expone `GET /health` y `POST /agent/ask`, sin invocar un LLM. | [Contrato HTTP](docs/api-contract.md) |
 | **Hermes + MCP** | Hermes puede consultar la herramienta local `consultar_soporte_ti` en sesiones propias. | [Guía técnica](docs/guia-tecnica-hermes-kimi.md) · [Guía para usuarios](docs/guia-usuario-hermes-kimi.md) |
 | **AWS Lambda + API Gateway** | Despliegue con AWS SAM y los mismos endpoints HTTP. | [template.yaml](template.yaml) |
+| **Docker en AWS EC2** | Contenedor Python + Node.js, con SQLite persistente y credenciales fuera de la imagen. | [Guía Docker y EC2](docs/docker-ec2.md) |
 
 Para desplegar en AWS desde PowerShell, configura AWS CLI y SAM CLI y ejecuta:
 

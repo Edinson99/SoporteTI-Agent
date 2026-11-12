@@ -1,0 +1,28 @@
+services:
+  soporteti-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soporteti-agent
+    restart: unless-stopped
+    ports:
+      - "80:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    env_file:
+      - .env
+    environment:
+      NODE_BIN: /usr/bin/node
+      GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/serviceAccountKey.json
+    volumes:
+      - ./data:/app/data
+      - ./secrets:/app/secrets:ro
+      - ./.secrets:/app/.secrets
