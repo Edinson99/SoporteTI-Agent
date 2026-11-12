@@ -11,8 +11,9 @@ los siguientes pasos todavía recomendados.
 > **Estado al 11 de noviembre de 2026:** recuperación semántica y feedback
 > locales disponibles (etapa 1, parcial); capacidades de las etapas 2–5
 > implementadas en 1.4.0. Gmail, Resend, Slack, Firebase (solo lectura) y la
-> conexión MTProto pasaron sus comprobaciones descritas abajo. La entrega de
-> eventos a Sentry sigue sin confirmar. La verificación no equivale a certificar
+> conexión MTProto pasaron sus comprobaciones descritas abajo; Sentry aceptó
+> un evento sintético por HTTP 200 y Hermes devolvió una respuesta en el
+> reintento tras un 503 inicial. La verificación no equivale a certificar
 > disponibilidad continua ni todos los flujos productivos. Los secretos no se
 > incluyen en el repositorio. Consulta el [informe de validación externa](validacion-integraciones-2026-11-11.md).
 
@@ -48,10 +49,10 @@ funcionalidad de la comprobación en un entorno real:
 | Etapa | Alcance que se propuso | Logro y estado actual | Pendiente principal |
 | --- | --- | --- | --- |
 | **1. Conocimiento y recuperación** | Búsqueda híbrida, benchmark, feedback y borradores de conocimiento revisados por humanos. | Recuperación semántica local opcional (1.3.9), benchmark sintético (1.3.10), feedback mínimo local (1.3.11) y mejoras de paráfrasis (1.3.12–1.3.13). **Parcial.** | Pipeline de borrador, anonimización, aprobación humana, publicación/versionado, reversión y evaluación con consultas representativas anonimizadas. |
-| **2. Rendimiento y observabilidad** | Métricas, límites y errores depurados hacia Sentry. | Contadores/latencia en memoria, rate limit por proceso y filtro de datos implementados. Sentry está configurado, pero un evento sintético no obtuvo respuesta HTTP en la validación. **Parcial: envío Sentry por diagnosticar.** | Confirmar entrega Sentry y definir alertas/retención; métricas distribuidas si se despliega en varias instancias. No se implementó caché de respuestas ni Redis. |
+| **2. Rendimiento y observabilidad** | Métricas, límites y errores depurados hacia Sentry. | Contadores/latencia en memoria, rate limit por proceso y filtro de datos implementados. Sentry aceptó un evento sintético (HTTP 200). **Implementada y comprobación básica aprobada.** | Observar disponibilidad sostenida y definir alertas/retención; métricas distribuidas si se despliega en varias instancias. No se implementó caché de respuestas ni Redis. |
 | **3. Notificaciones resilientes** | Gmail primario, Resend de respaldo y Slack para prioridad alta/crítica. | Estados, clasificación y auditoría implementados. Gmail, Resend y Slack aceptaron mensajes sintéticos reales. **Implementada y comprobación básica aprobada.** | Probar fin a fin el fallo Gmail→Resend y tickets de prioridad alta, reintentos, duplicados y cuotas sin generar tickets de producción. |
 | **4. Evidencias y canal móvil** | Retención de capturas y canal Telegram de consulta puntual. | Eliminación al resolver o tras 180 días; canal MTProto personal con allowlist y sesión local. La sesión se conectó y estaba autorizada. **Implementada; Telegram comprobado a nivel de conexión solamente.** | Probar `/start` y `/consulta` desde una cuenta permitida; automatizar limpieza en vez de depender de accesos a tickets; revisar supervisión del proceso MTProto. |
-| **5. Estado y madurez operativa** | Página de estado y resumen sin dependencia de status externo. | `/status`, `/api/status`, `/api/metrics` y documentación de límites implementados. Firebase Data Connect respondió a una lectura de tickets (11 elementos) sin cambios. **Implementada; lectura real aprobada.** | Autenticación/autorización para técnicos, monitoreo real de dependencias con timeout y protección antes de cualquier exposición multiusuario. |
+| **5. Estado y madurez operativa** | Página de estado y resumen sin dependencia de status externo. | `/status`, `/api/status`, `/api/metrics` y documentación de límites implementados. Firebase Data Connect respondió a una lectura de tickets (12 elementos en la verificación más reciente) sin cambios. **Implementada; lectura real aprobada.** | Autenticación/autorización para técnicos, monitoreo real de dependencias con timeout y protección antes de cualquier exposición multiusuario. |
 
 El informe [validacion-integraciones-2026-11-11.md](validacion-integraciones-2026-11-11.md)
 registra el tipo de prueba, el resultado y sus límites. Una respuesta HTTP 200
@@ -235,9 +236,9 @@ al servicio.
 
 ## Activación y límites pendientes
 
-1. Sentry está configurado y su evento sintético fue filtrado localmente, pero
-   la entrega no se confirmó; revisar conectividad, estado del proyecto y
-   respuesta del transporte antes de depender de él para alertas operativas.
+1. Sentry aceptó un evento sintético (HTTP 200); observar entrega sostenida y
+   revisar errores de red en el entorno antes de depender de él como única
+   alerta operativa.
 2. Cargar secretos de Resend, Slack y Telegram solo en el entorno local o
    gestor de secretos autorizado; proteger especialmente el archivo de sesión
    MTProto y no guardar credenciales en el repositorio.
@@ -247,8 +248,8 @@ al servicio.
 4. Gmail, Resend y Slack aceptaron mensajes sintéticos de prueba; Firebase se
    leyó sin modificaciones. El informe de validación detalla qué no se probó
    y no certifica la entrega final de correo ni los flujos completos de tickets.
-5. Investigar y confirmar la entrega a Sentry: el evento sintético quedó en la
-   cola del SDK y no se observó respuesta HTTP dentro de 45 segundos.
+5. Hermes respondió a una consulta sintética en el reintento después de un 503;
+   monitorear fallos transitorios y cuota del proveedor.
 6. Definir revisión humana y reversión de conocimiento derivado de tickets;
    esta parte de la etapa 1 sigue sin implementarse.
 
